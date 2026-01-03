@@ -1,0 +1,251 @@
+initialize() {
+	// Modelo no-Wright-Fisher en espacio 2D continuo
+	initializeSLiMModelType("nonWF");
+	initializeSLiMOptions(dimensionality="xy");
+	
+	// --- PARÁMETROS PARA INFERENCIA ---
+	defineConstant("S_COEFF", 0.05); // Coeficiente de selección (s)
+	defineConstant("SIGMA", 0.02);   // Dispersión (SD). Controla la Difusión (D)
+	defineConstant("MU", 1.2e-8);    // Tasa de mutación realista
+	
+	initializeMutationRate(MU);
+	
+	// --- DEFINICIÓN DE MUTACIONES ---
+	// m1: Neutra
+	// m2: Selección (S_COEFF se aplica manualmente en early())
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	initializeMutationType("m2", 0.5, "f", 0.0);
+	
+	initializeGenomicElementType("g1", c(m1, m2), c(0.99, 0.01));
+	
+	// --- ESTRUCTURA DEL CROMOSOMA (20 GENES) ---
+	rec_ends = NULL;
+	rec_rates = NULL;
+	
+	// Construimos 20 fragmentos de 1000bp con recombinación libre entre ellos
+	for (index in 1:20) {
+		start = (index - 1)*1000;
+		end = start + 999;
+		initializeGenomicElement(g1, start, end);
+		
+		rec_ends = c(rec_ends, end);
+		rec_rates = c(rec_rates, 1e-8); // Tasa baja DENTRO del gen
+		
+		rec_ends = c(rec_ends, end + 1);
+		rec_rates = c(rec_rates, 0.5);  // Recombinación libre ENTRE genes
+	}
+	
+	initializeRecombinationRate(rec_rates, rec_ends);
+	
+	// --- CONSTANTES DEL MODELO ---
+	defineConstant("K", 1000);      // Capacidad de carga total aprox
+	defineConstant("N", 1000);      // Tamaño inicial
+	defineConstant("GRID_SIZE", 10); // Para la discretización virtual (10x10)
+	defineConstant("OUTPUT_PATH", "/Users/alessandrohernandez/Documents/Posgrado/Inf_MigSelection/results_simulations/");
+	defineConstant("REPLICATE", 1);
+	
+	// Parámetros de movimiento
+	defineConstant("SD", SIGMA); // Sigma de Dispersión (Natal)
+	defineConstant("SV", 0.01);  // Movimiento adulto
+	defineConstant("SM", 0.01);  // Búsqueda de pareja
+	
+	// Interacciones Espaciales
+	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SD*3); // Competencia
+	i1.setInteractionFunction("n", 1.0, SD*3);
+	
+	initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM*3); // Apareamiento
+	i2.setInteractionFunction("n", 1.0, SM*3);
+}
+
+1 early() {
+	// Inicialización de la población
+	sim.addSubpop("p1", N);
+	p1.setSpatialBounds(c(0.0, 0.0, 1.0, 1.0));
+	p1.individuals.setSpatialPosition(p1.pointUniform(N));
+	
+	// --- PREPARACIÓN DE ARCHIVOS DE SALIDA ---
+	writeFile(OUTPUT_PATH + "FULL_C_neutros_m1_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	writeFile(OUTPUT_PATH + "FULL_C_seleccion_m2_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+}
+
+2: first() {
+	i2.evaluate(p1);
+}
+
+early() {
+	// 1. DENSIDAD Y COMPETENCIA
+	i1.evaluate(p1);
+	inds = p1.individuals;
+	competition = i1.totalOfNeighborStrengths(inds);
+	
+	// Regulación de densidad (Fitness Scaling)
+	// Ajustamos para que la población local no explote
+	inds.fitnessScaling = 1.0 / (1.0 + (competition / (K / (GRID_SIZE*GRID_SIZE))));
+	
+	// 2. MOVIMIENTO ADULTO
+	pos = p1.pointDeviated(inds.size(), inds.spatialPosition, "reflecting", 1000, "n", SV);
+	inds.setSpatialPosition(pos);
+	
+	// 3. SELECCIÓN NATURAL (Vía Fecundidad)
+	
+	// Contamos copias de m2 (seleccionada)
+	mut_count = inds.countOfMutationsOfType(m2);
+	
+	// Efecto aditivo: 1 + S * n_copias
+	selection_multiplier = 1.0 + S_COEFF * mut_count;
+	
+	// Tasa base f0=4, ajustada por selección
+	f_w = 4.0 * selection_multiplier;
+	inds.tag = rpois(inds.size(), lambda = f_w);
+}
+
+// REPRODUCCIÓN (La dispersión genética ocurre aquí)
+reproduction() {
+	mate = i2.nearestNeighbors(individual, 1);
+	if (mate.size()) {
+		for (i in seqLen(individual.tag)) {
+			offspring = subpop.addCrossed(individual, mate);
+			// Dispersión natal (Motor de la difusión D)
+			pos = individual.spatialPosition + rnorm(2, 0, SD);
+			offspring.setSpatialPosition(p1.pointReflected(pos));
+		}
+	}
+}
+
+// SALIDA DE DATOS (Mapeo Continuo -> Discreto Virtual)
+600:1000 late() {
+	
+	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount);
+	
+	// === CUADRÍCULA VIRTUAL (BINNING) ===
+	// Agrupamos individuos continuos en celdas 10x10 para simular las subpoblaciones discretas
+	
+	grid_bins = Dictionary();
+	inds = p1.individuals;
+	
+	// Calcular coordenada de celda (0-9)
+	xs = asInteger(floor(inds.x * GRID_SIZE));
+	ys = asInteger(floor(inds.y * GRID_SIZE));
+	
+	// Corrección de bordes
+	xs = ifelse(xs >= GRID_SIZE, GRID_SIZE - 1, xs);
+	ys = ifelse(ys >= GRID_SIZE, GRID_SIZE - 1, ys);
+	
+	// ID único de celda
+	bin_ids = xs * GRID_SIZE + ys;
+	
+	// Llenar diccionario
+	for (i in 0:(size(inds)-1)) {
+		id = bin_ids[i];
+		
+		// INTENTO DE RECUPERAR EL VALOR
+		// Si la clave no existe, getValue devuelve NULL (en versiones recientes)
+		existing_content = grid_bins.getValue(id);
+		
+		if (isNULL(existing_content))
+			grid_bins.setValue(id, inds[i]);
+		else
+			grid_bins.setValue(id, c(existing_content, inds[i]));
+	}
+	
+	available_bins = grid_bins.allKeys;
+	
+	// ==========================================================
+	// 1. DATOS DISPERSOS (aDNA SIMULADO)
+	// ==========================================================
+	
+	if (size(available_bins) > 0) {
+		// Número de sitios arqueológicos descubiertos (1 a 10)
+		num_sites = rdunif(1, 1, 10);
+		sites_to_sample_count = min(num_sites, size(available_bins));
+		
+		if (sites_to_sample_count > 0) {
+			sampled_bin_ids = sample(available_bins, sites_to_sample_count);
+			
+			lines_aDNA = "";
+			
+			for (bin_id in sampled_bin_ids) {
+				inds_in_bin = grid_bins.getValue(bin_id);
+				
+				// Coordenadas discretas (1 a 10)
+				x_grid = asInteger(bin_id / GRID_SIZE) + 1;
+				y_grid = (bin_id % GRID_SIZE) + 1;
+				
+				// Número de individuos en el yacimiento (1 a 100)
+				num_inds_to_sample = rdunif(1, 1, 100);
+				num_inds_real = min(num_inds_to_sample, size(inds_in_bin));
+				
+				if (num_inds_real > 0) {
+					sampled_inds = sample(inds_in_bin, num_inds_real);
+					
+					// IMPORTANTE: SLiM 4.x usa .haplosomes
+					sampled_genomes = sampled_inds.haplosomes;
+					current_chr_tot = size(sampled_genomes);
+					muts_in_sample = unique(sampled_genomes.mutations);
+					
+					for (m in muts_in_sample) {
+						mut_type_str = "NA";
+						if (m.mutationType == m1) mut_type_str = "m1";
+						else if (m.mutationType == m2) mut_type_str = "m2";
+						
+						if (mut_type_str != "NA") {
+							count = sum(sampled_genomes.mutations == m);
+							freq = count / asFloat(current_chr_tot);
+							
+							line = paste(c(sim.cycle, m.id, mut_type_str, x_grid, y_grid, freq, count, current_chr_tot), sep=",");
+							lines_aDNA = c(lines_aDNA, line);
+						}
+					}
+				}
+			}
+			if (length(lines_aDNA) > 0)
+				writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + REPLICATE + ".csv", paste(lines_aDNA, sep="\n"), append=T);
+		}
+	}
+	
+	// ==========================================================
+	// 2. DATOS COMPLETOS (GROUND TRUTH)
+	// ==========================================================
+	
+	lines_m1 = "";
+	lines_m2 = "";
+	
+	for (bin_id in available_bins) {
+		inds_in_bin = grid_bins.getValue(bin_id);
+		x_grid = asInteger(bin_id / GRID_SIZE) + 1;
+		y_grid = (bin_id % GRID_SIZE) + 1;
+		
+		all_genomes = inds_in_bin.haplosomes; // Aquí .genomes sigue funcionando como alias de todos los genomas del vector de inds
+		chr_tot = size(all_genomes);
+		all_muts = unique(all_genomes.mutations);
+		
+		for (m in all_muts) {
+			count = sum(all_genomes.mutations == m);
+			freq = count / asFloat(chr_tot);
+			
+			// m2 (Selección) - Guardamos todo
+			if (m.mutationType == m2) {
+				line = paste(c(sim.cycle, m.id, x_grid, y_grid, freq, count, chr_tot), sep=",");
+				lines_m2 = c(lines_m2, line);
+			}
+			// m1 (Neutro) - Filtro > 1% global para ahorrar espacio
+			else if (m.mutationType == m1) {
+				if (sim.mutationFrequencies(NULL, m) > 0.01) {
+					line = paste(c(sim.cycle, m.id, x_grid, y_grid, freq, count, chr_tot), sep=",");
+					lines_m1 = c(lines_m1, line);
+				}
+			}
+		}
+	}
+	
+	if (length(lines_m1) > 0)
+		writeFile(OUTPUT_PATH + "FULL_C_neutros_m1_rep" + REPLICATE + ".csv", paste(lines_m1, sep="\n"), append=T);
+	if (length(lines_m2) > 0)
+		writeFile(OUTPUT_PATH + "FULL_C_seleccion_m2_rep" + REPLICATE + ".csv", paste(lines_m2, sep="\n"), append=T);
+}

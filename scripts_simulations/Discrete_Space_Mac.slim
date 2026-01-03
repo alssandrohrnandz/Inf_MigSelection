@@ -1,0 +1,191 @@
+initialize() {
+	//initializeSex("A"); 
+	defineConstant("SubpopSize", 1000);
+	defineConstant("Migration", 0.05);
+	defineConstant("pop", 20);
+	defineConstant("REPLICATE", 1);
+	defineConstant("matrix_size", pop*pop);
+	
+	// RUTA DE SALIDA (Ajusta esto a tu carpeta)
+	defineConstant("OUTPUT_PATH", "/Users/alessandrohernandez/Documents/Posgrado/Inf_MigSelection/results_simulations/");
+	
+	defineConstant("MU", 1.2e-8);
+	
+	initializeMutationRate(MU);
+	
+	// m1: Neutra, m2: Selección (s=0.05)
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	initializeMutationType("m2", 0.5, "f", 0.01);
+	
+	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01));
+	
+	rec_ends = NULL;
+	rec_rates = NULL;
+	for (index in 1:20) {
+		start = (index - 1)*1000;
+		end = start + 999;
+		initializeGenomicElement(g1, start, end);
+		rec_ends = c(rec_ends, end);
+		rec_rates = c(rec_rates, 1e-8);
+		rec_ends = c(rec_ends, end + 1);
+		rec_rates = c(rec_rates, 0.5);
+	}
+	initializeRecombinationRate(rec_rates, rec_ends);
+}
+
+1 early() {
+	// Configuración de la grilla (Stepping Stone 10x10)
+	metapopSide = pop;
+	metapopSize = pop*pop;
+	for (i in 1:metapopSize)
+		sim.addSubpop(i, SubpopSize);
+	
+	subpops = sim.subpopulations;
+	for (x in 1:metapopSide)
+		for (y in 1:metapopSide) {
+			destID = (x - 1) + (y - 1) * metapopSide + 1;
+			ds = subpops[destID - 1];
+			// Migración
+			if (x > 1) ds.setMigrationRates(destID - 1, Migration);
+			if (x < metapopSide) ds.setMigrationRates(destID + 1, Migration);
+			if (y > 1) ds.setMigrationRates(destID - metapopSide, Migration);
+			if (y < metapopSide) ds.setMigrationRates(destID + metapopSide, Migration);
+			
+			// GUI
+			xd = ((x - 1) / (metapopSide - 1)) * 0.9 + 0.05;
+			yd = ((y - 1) / (metapopSide - 1)) * 0.9 + 0.05;
+			ds.configureDisplay(c(xd, yd), 0.4);
+		}
+	
+	// --- ARCHIVOS DE SALIDA ---
+	
+	// 1. Verdad Terreno (Neutro)
+	writeFile(OUTPUT_PATH + "FULL_D_neutros_m1_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	// 2. Verdad Terreno (Selección)
+	writeFile(OUTPUT_PATH + "FULL_D_seleccion_m2_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	// 3. DATOS SIMULADOS aDNA (SCATTERED & VARIABLE SIZE)
+	writeFile(OUTPUT_PATH + "D_aDNA_scattered_rep" + REPLICATE + ".csv",
+		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+}
+
+// Muestreo de la generación 600 a la 1000
+600:1000 late() {
+	
+	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
+	n = asInteger(sqrt(matrix_size));
+	
+	// ==========================================================
+	// 1. GENERACIÓN DE DATOS DISPERSOS (aDNA SIMULADO HETEROGÉNEO)
+	// ==========================================================
+	
+	// Seleccionamos al azar 2 ubicaciones donde "encontramos fósiles" en esta generación
+	sampled_pops = sample(sim.subpopulations, rdunif(1, 1, 10));
+	
+	lines_aDNA = "";
+	
+	for (subpop in sampled_pops) {
+		
+		// --- NUEVO: TAMAÑO DE MUESTRA VARIABLE ---
+		// Elegimos un número aleatorio entre 1 y 100 para simular la riqueza del yacimiento
+		// rdunif(cantidad, min, max)
+		num_inds_to_sample = rdunif(1, 1, 100);
+		
+		// Muestreamos esos individuos
+		sampled_inds = subpop.sampleIndividuals(num_inds_to_sample);
+		if (size(sampled_inds) > 0) {
+			// 1. CAMBIO: Usamos .haplosomes en lugar de .genomes (Versiones nuevas de SLiM)
+			sampled_genomes = sampled_inds.haplosomes;
+			
+			// El total de cromosomas observados (haplosomas)
+			current_chr_tot = size(sampled_genomes);
+			
+			// Obtenemos mutaciones únicas en esta muestra
+			muts_in_sample = unique(sampled_genomes.mutations);
+			
+			// Coordenadas
+			index = subpop.id - 1;
+			x_pos = (index % n) + 1;
+			y_pos = asInteger(index / n) + 1;
+			for (m in muts_in_sample) {
+				mut_type_str = "NA";
+				if (m.mutationType == m1) mut_type_str = "m1";
+				else if (m.mutationType == m2) mut_type_str = "m2";
+				if (mut_type_str != "NA") {
+					// 2. CAMBIO: Contamos manualmente.
+					// 'sampled_genomes.mutations' devuelve todas las mutaciones en el vector.
+					// 'sum(... == m)' cuenta cuántas veces aparece la mutación m.
+					count_in_sample = sum(sampled_genomes.mutations == m);
+					
+					// Calculamos frecuencia
+					freq_in_sample = count_in_sample / asFloat(current_chr_tot);
+					
+					// Guardamos
+					line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
+					lines_aDNA = c(lines_aDNA, line);
+				}
+			}
+		}
+	
+	}
+	
+	if (length(lines_aDNA) > 0)
+		writeFile(OUTPUT_PATH + "D_aDNA_scattered_rep" + REPLICATE + ".csv",
+		paste(lines_aDNA, sep="\n"), append=T);
+	
+	
+	// ==========================================================
+	// 2. GENERACIÓN DE "GROUND TRUTH" (ARCHIVOS COMPLETOS)
+	// ==========================================================
+	// (Código idéntico al anterior para la verdad absoluta)
+	
+	// --- M2 FULL ---
+	muts_m2 = sim.mutationsOfType(m2);
+	if (size(muts_m2) > 0) {
+		lines_m2 = "";
+		for (m in muts_m2) {
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+				// Guardamos todo, incluso ceros para m2
+				chr_tot = 2 * size(subpop.individuals);
+				allele_count = asInteger(round(freq * chr_tot));
+				index = subpop.id - 1;
+				x_pos = (index % n) + 1;
+				y_pos = asInteger(index / n) + 1;
+				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+				lines_m2 = c(lines_m2, line);
+			}
+		}
+		if (length(lines_m2) > 0)
+			writeFile(OUTPUT_PATH + "FULL_D_seleccion_m2_rep" + REPLICATE + ".csv",
+			paste(lines_m2, sep="\n"), append=T);
+	}
+	
+	// --- M1 FULL ---
+	muts_m1 = sim.mutationsOfType(m1);
+	if (size(muts_m1) > 0) {
+		lines_m1 = "";
+		for (m in muts_m1) {
+			if (sim.mutationFrequencies(NULL, m) > 0.01) {
+				for (subpop in sim.subpopulations) {
+					freq = sim.mutationFrequencies(subpop, m);
+					if (freq > 0) {
+						chr_tot = 2 * size(subpop.individuals);
+						allele_count = asInteger(round(freq * chr_tot));
+						index = subpop.id - 1;
+						x_pos = (index % n) + 1;
+						y_pos = asInteger(index / n) + 1;
+						line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+						lines_m1 = c(lines_m1, line);
+					}
+				}
+			}
+		}
+		if (length(lines_m1) > 0)
+			writeFile(OUTPUT_PATH + "FULL_D_neutros_m1_rep" + REPLICATE + ".csv",
+			paste(lines_m1, sep="\n"), append=T);
+	}
+}
