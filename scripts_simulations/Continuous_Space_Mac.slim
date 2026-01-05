@@ -5,7 +5,7 @@ initialize() {
 	
 	// --- PARÁMETROS PARA INFERENCIA ---
 	defineConstant("S_COEFF", 0.05); // Coeficiente de selección (s)
-	defineConstant("SIGMA", 0.02);   // Dispersión (SD). Controla la Difusión (D)
+	defineConstant("SIGMA", 0.01);   // Dispersión (SD). Controla la Difusión (D)
 	defineConstant("MU", 1.2e-8);    // Tasa de mutación realista
 	
 	initializeMutationRate(MU);
@@ -14,7 +14,7 @@ initialize() {
 	// m1: Neutra
 	// m2: Selección (S_COEFF se aplica manualmente en early())
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.0);
+	initializeMutationType("m2", 0.5, "f", 0.01);
 	
 	initializeGenomicElementType("g1", c(m1, m2), c(0.99, 0.01));
 	
@@ -41,7 +41,7 @@ initialize() {
 	defineConstant("K", 1000);      // Capacidad de carga total aprox
 	defineConstant("N", 1000);      // Tamaño inicial
 	defineConstant("GRID_SIZE", 10); // Para la discretización virtual (10x10)
-	defineConstant("OUTPUT_PATH", "/Users/alessandrohernandez/Documents/Posgrado/Inf_MigSelection/results_simulations/");
+	defineConstant("OUTPUT_PATH", "/Users/alessandrohernandez/Documents/Posgrado/Inf_MigSelection/Inference_SLiM/results_simulations/");
 	defineConstant("REPLICATE", 1);
 	
 	// Parámetros de movimiento
