@@ -12,14 +12,25 @@
 # 1. Start time
 START_TIME=$(date +%s)
 echo "Iniciando Job Array ID: $SLURM_ARRAY_TASK_ID en $(hostname)"
+# TODO: ME QUEDE AQUÍ. HAY QUE REVISAR ESTA PARTE
+# FIXME: REVISAR LAS RUTAS Y CONSULTAR EN GEMINI EL CODIGO RESTANTE PARA EDITARLO AQUI.
 
-# 2. Dir
+DIR_BASE=
 
-DIR_BASE="/mnt/data/dortega/hlopezh/Inf_MigSelection/"
+# 2. Loading all files into PREFIJO
+FILES_TO_PROCESS=(
+    "C_FULL_seleccion_m2"
+    "C_FULL_neutros_m1"
+    "C_aDNA_scattered"
+    "D_FULL_seleccion_m2"
+    "D_FULL_neutros_m1"
+    "D_aDNA_scattered"
+)
 
-ALLELE_LIST="${DIR_BASE}/data/mutaciones_ID.txt"  # Asumiendo que moviste esto a data/
-FREQ_FILE="${DIR_BASE}/data/frecuencias_mutaciones_m1_10_600Gen.csv"
-R_SCRIPT="${DIR_BASE}/scripts/inference/Imagenes_Likelihood_frecuencias_mutaciones_m1_10.R"
+echo "Procesando archivos del Job ID: ${TASK_ID} ..."
+
+for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
+    INPUT_FILE=
 
 # Cargar modulo (ajusta segun tu servidor, a veces es R/4.x.x)
 module load r/4.1.3
