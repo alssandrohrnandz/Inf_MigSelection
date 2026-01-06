@@ -1,17 +1,19 @@
 #!/bin/bash
 #SBATCH --job-name=CompositeLL
-#SBATCH --partition=defq            # Asegurate que esta particion existe (la vimos en tu sinfo)
-#SBATCH --output=logs/job_%A_%a.out # %A=ID Master, %a=ID Array (ej. job_1234_1.out)
+#SBATCH --partition=defq            
+#SBATCH --output=logs/job_%A_%a.out 
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-10                # 10 trabajos en paralelo
+#SBATCH --array=1-10                
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1           # R rara vez usa mas de 1 CPU a menos que paralelos internamente
+#SBATCH --cpus-per-task=1           
 #SBATCH --mem=8G
 #SBATCH --time=24:00:00
 
-# === 1. Marcar tiempo de inicio ===
+# 1. Start time
 START_TIME=$(date +%s)
 echo "Iniciando Job Array ID: $SLURM_ARRAY_TASK_ID en $(hostname)"
+
+# 2. Dir
 
 DIR_BASE="/mnt/data/dortega/hlopezh/Inf_MigSelection/"
 
