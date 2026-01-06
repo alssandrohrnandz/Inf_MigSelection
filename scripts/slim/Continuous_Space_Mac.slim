@@ -38,11 +38,12 @@ initialize() {
 	initializeRecombinationRate(rec_rates, rec_ends);
 	
 	// --- CONSTANTES DEL MODELO ---
-	defineConstant("K", 1000);      // Capacidad de carga total aprox
-	defineConstant("N", 1000);      // Tamaño inicial
+	defineConstant("K", 2000);      // Capacidad de carga total aprox
+	defineConstant("N", 2000);      // Tamaño inicial
 	defineConstant("GRID_SIZE", 10); // Para la discretización virtual (10x10)
-	defineConstant("OUTPUT_PATH", "/Users/alessandrohernandez/Documents/Posgrado/Inf_MigSelection/Inference_SLiM/results_simulations/");
-	defineConstant("REPLICATE", 1);
+	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_simulations/");
+	if (!exists("id_replica"))
+        defineConstant("id_replica", 1);
 	
 	// Parámetros de movimiento
 	defineConstant("SD", SIGMA); // Sigma de Dispersión (Natal)
@@ -64,13 +65,13 @@ initialize() {
 	p1.individuals.setSpatialPosition(p1.pointUniform(N));
 	
 	// --- PREPARACIÓN DE ARCHIVOS DE SALIDA ---
-	writeFile(OUTPUT_PATH + "FULL_C_neutros_m1_rep" + REPLICATE + ".csv",
+	writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
-	writeFile(OUTPUT_PATH + "FULL_C_seleccion_m2_rep" + REPLICATE + ".csv",
+	writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
-	writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + REPLICATE + ".csv",
+	writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + id_replica + ".csv",
 		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 }
 
@@ -205,7 +206,7 @@ reproduction() {
 				}
 			}
 			if (length(lines_aDNA) > 0)
-				writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + REPLICATE + ".csv", paste(lines_aDNA, sep="\n"), append=T);
+				writeFile(OUTPUT_PATH + "C_aDNA_scattered_rep" + id_replica + ".csv", paste(lines_aDNA, sep="\n"), append=T);
 		}
 	}
 	
@@ -245,7 +246,7 @@ reproduction() {
 	}
 	
 	if (length(lines_m1) > 0)
-		writeFile(OUTPUT_PATH + "FULL_C_neutros_m1_rep" + REPLICATE + ".csv", paste(lines_m1, sep="\n"), append=T);
+		writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv", paste(lines_m1, sep="\n"), append=T);
 	if (length(lines_m2) > 0)
-		writeFile(OUTPUT_PATH + "FULL_C_seleccion_m2_rep" + REPLICATE + ".csv", paste(lines_m2, sep="\n"), append=T);
+		writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv", paste(lines_m2, sep="\n"), append=T);
 }
