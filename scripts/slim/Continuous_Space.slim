@@ -71,8 +71,11 @@ initialize() {
 	writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
-	writeFile(OUTPUT_PATH + "C_aDNA_scattered_" + id_replica + ".csv",
-		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+    writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
+        "Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+
+    writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
+        "Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 }
 
 2: first() {
@@ -169,7 +172,8 @@ reproduction() {
 		if (sites_to_sample_count > 0) {
 			sampled_bin_ids = sample(available_bins, sites_to_sample_count);
 			
-			lines_aDNA = "";
+			lines_aDNA_m1 = "";
+            lines_aDNA_m2 = "";
 			
 			for (bin_id in sampled_bin_ids) {
 				inds_in_bin = grid_bins.getValue(bin_id);
@@ -200,13 +204,19 @@ reproduction() {
 							freq = count / asFloat(current_chr_tot);
 							
 							line = paste(c(sim.cycle, m.id, mut_type_str, x_grid, y_grid, freq, count, current_chr_tot), sep=",");
-							lines_aDNA = c(lines_aDNA, line);
+							if (m.mutationType == m1)
+                                lines_aDNA_m1 = c(lines_aDNA_m1, line);
+                            else if (m.mutationType == m2)
+                                lines_aDNA_m2 = c(lines_aDNA_m2, line);
 						}
 					}
 				}
 			}
-			if (length(lines_aDNA) > 0)
-				writeFile(OUTPUT_PATH + "C_aDNA_scattered_" + id_replica + ".csv", paste(lines_aDNA, sep="\n"), append=T);
+			if (length(lines_aDNA_m1) > 0)
+                writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv", paste(lines_aDNA_m1, sep="\n"), append=T);
+            
+            if (length(lines_aDNA_m2) > 0)
+                writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv", paste(lines_aDNA_m2, sep="\n"), append=T);
 		}
 	}
 	
