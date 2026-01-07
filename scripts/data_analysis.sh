@@ -46,11 +46,11 @@ TASK_ID=$SLURM_ARRAY_TASK_ID
 SUBSET_FILE="${DIR_BASE}/data/subsets/alelos_subset_${TASK_ID}.txt"
 OUT_FILE="${DIR_BASE}/data/outputs/resultados_${TASK_ID}.txt"
 
-# === 5. Evitar retrabajo ===
-if [ -f "${OUT_FILE}" ]; then
-    echo "El archivo ${OUT_FILE} ya existe. Saltando este paso."
-    exit 0
-fi
+# === 5. Avoiding extra work ===
+#if [ -f "${OUT_FILE}" ]; then
+#    echo "El archivo ${OUT_FILE} ya existe. Saltando este paso."
+ #   exit 0
+#fi
 
 # === 6. Muestreo Aleatorio ===
 # IMPORTANTE: Esto asume que mutaciones_ID.txt NO tiene encabezado.
