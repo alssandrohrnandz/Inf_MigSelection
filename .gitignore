@@ -2,3 +2,6 @@
 .Rhistory
 .RData
 .Ruserdata
+Trabajo.code-workspace
+
+scripts/inference/infLikelihood_mutations_simulations_SLiM.R
