@@ -6,15 +6,14 @@ library(VGAM)
 
 # === 1. Lectura de Argumentos ===
 args <- commandArgs(trailingOnly = TRUE)
-
-if(length(args) < 4) {
-  stop("Faltan argumentos. Se requieren: freq_file, subset_file, task_id, model_name")
-}
-
 freq_file   <- args[1]
 subset_file <- args[2]
 task_id     <- args[3]
 model_name  <- args[4]
+
+if(length(args) < 4) {
+  stop("Faltan argumentos. Se requieren: freq_file, subset_file, task_id, model_name")
+}
 
 print(paste("Procesando archivo:", freq_file))
 print(paste("Modelo:", model_name))
