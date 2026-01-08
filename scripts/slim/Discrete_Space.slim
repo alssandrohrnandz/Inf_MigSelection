@@ -58,8 +58,6 @@ initialize() {
 			ds.configureDisplay(c(xd, yd), 0.4);
 		}
 	
-	// --- ARCHIVOS DE SALIDA ---
-	
 	// 1. Verdad Terreno (Neutro)
 	writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
@@ -120,19 +118,15 @@ initialize() {
 				if (m.mutationType == m1) mut_type_str = "m1";
 				else if (m.mutationType == m2) mut_type_str = "m2";
 				if (mut_type_str != "NA") {
-					// 2. CAMBIO: Contamos manualmente.
-					// 'sampled_genomes.mutations' devuelve todas las mutaciones en el vector.
-					// 'sum(... == m)' cuenta cuántas veces aparece la mutación m.
+
 					count_in_sample = sum(sampled_genomes.mutations == m);
-					
-					// Calculamos frecuencia
+
 					freq_in_sample = count_in_sample / asFloat(current_chr_tot);
 					
-					// Guardamos
 					line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
-					if (m.MutationType== m1) {
+					if (m.mutationType== m1) {
 						lines_aDNA_m1 = c(lines_aDNA_m1, line);
-					} else if (m.MutationType==m2) {
+					} else if (m.mutationType==m2) {
 						lines_aDNA_m2 = c(lines_aDNA_m2, line);
 					}
 				}
@@ -148,12 +142,6 @@ initialize() {
 	if (length(lines_aDNA_m2) > 0)
 		writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
 		paste(lines_aDNA_m2, sep="\n"), append=T);
-	
-	
-	// ==========================================================
-	// 2. GENERACIÓN DE "GROUND TRUTH" (ARCHIVOS COMPLETOS)
-	// ==========================================================
-	// (Código idéntico al anterior para la verdad absoluta)
 	
 	// --- M2 FULL ---
 	muts_m2 = sim.mutationsOfType(m2);
