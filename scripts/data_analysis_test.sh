@@ -11,6 +11,7 @@
 #SBATCH --time=00:30:00
 
 # === 1. Configuración Inicial ===
+# TODO: Aquí me quede. Hay que analizar el archivo.
 module load r/4.1.3
 module load slim/4.3
 
