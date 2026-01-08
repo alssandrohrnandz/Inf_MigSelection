@@ -6,3 +6,5 @@ scripts/inference/infLikelihood_mutations_simulations_SLiM.R
 logs/
 Inference_SLiM.Rproj
 data/
+.DS_Store 
+scripts/inference/.DS_Store 
