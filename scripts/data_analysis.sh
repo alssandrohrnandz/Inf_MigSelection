@@ -37,15 +37,16 @@ slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Discrete_Space.slim"
 # === 3. Procesamiento y Análisis (Bucle Maestro) ===
 
 # Lista de modelos a procesar
+#Los prefijos son los modelos. Nos ayudará a entender qué estamos analizando
 FILES_TO_PROCESS=(
     "C_FULL_seleccion_m2"
     "C_FULL_neutros_m1"
-    "C_aDNA_scattered_neutros_m1"      # <--- Nombre corregido
-    "C_aDNA_scattered_seleccion_m2"    # <--- Nombre corregido
+    "C_aDNA_scattered_neutros_m1"     
+    "C_aDNA_scattered_seleccion_m2"    
     "D_FULL_seleccion_m2"
     "D_FULL_neutros_m1"
-    "D_aDNA_scattered_neutros_m1"      # <--- Nombre corregido
-    "D_aDNA_scattered_seleccion_m2"    # <--- Nombre corregido
+    "D_aDNA_scattered_neutros_m1"      
+    "D_aDNA_scattered_seleccion_m2"    
 )
 
 echo "--> Iniciando extracción y análisis en R..."
@@ -68,7 +69,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         if [ -s "${SUBSET_OUTPUT}" ]; then
             echo "    [${PREFIJO}] Analizando en R..."
          
-            Rscript --vanilla "${R_SCRIPT}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}"
+            Rscript --vanilla "${R_SCRIPT}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}
             
         else
             echo "    ALERTA: El subset para ${PREFIJO} quedó vacío."
