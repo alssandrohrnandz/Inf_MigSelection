@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-10                # Correrá 10 simulaciones independientes
+#SBATCH --array=1-5                # Correrá 5 simulaciones independientes
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
