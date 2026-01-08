@@ -5,7 +5,8 @@ initialize() {
 	
 	// --- PARÁMETROS PARA INFERENCIA ---
 	defineConstant("S_COEFF", 0.05); // Coeficiente de selección (s)
-	defineConstant("SIGMA", 0.01);   // Dispersión (SD). Controla la Difusión (D)
+	defineConstant("SIGMA", 0.01);
+	// Dispersión (SD). Controla la Difusión (D)
 	defineConstant("MU", 1.2e-8);    // Tasa de mutación realista
 	
 	initializeMutationRate(MU);
@@ -49,7 +50,9 @@ initialize() {
 	defineConstant("SD", SIGMA); // Sigma de Dispersión (Natal)
 	defineConstant("SV", 0.01);  // Movimiento adulto
 	defineConstant("SM", 0.01);  // Búsqueda de pareja
-	
+	//TODO: Experimentar con 0.01 y ver cuáles son los parámetros que infiere
+	//TODO: Experimentar con 0.001 y 0.0001
+
 	// Interacciones Espaciales
 	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SD*3); // Competencia
 	i1.setInteractionFunction("n", 1.0, SD*3);
