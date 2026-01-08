@@ -8,7 +8,7 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --time=24:00:00
-
+#TODO : ANALIZAR LA FUNCIONALIDAD DE ESTE ARCHIVO.
 # === 1. Configuración Inicial ===
 module load r/4.1.3
 module load slim/4.3
