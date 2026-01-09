@@ -87,7 +87,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
         "D_aDNA_scattered_neutros_m1"
         "D_aDNA_scattered_seleccion_m2"
     )
-    if [[ "$ACTION" != "solo_analisis" ]]; then
+    if [[ "$ACCION" != "solo_analisis" ]]; then
         echo " Ejecutando SLiM: Discrete Space .."
         slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
         else 
