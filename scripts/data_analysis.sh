@@ -1,45 +1,63 @@
 #!/bin/bash
-#SBATCH --job-name=Sim_And_Analyze
+#SBATCH --job-name=Sim_Mig_Wave
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-5                # Correrá 5 simulaciones independientes
+#SBATCH --array=1-250                # 5 valores migración * 50 réplicas = 250
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --time=24:00:00
+
 # === 1. Configuración Inicial ===
 module load r/4.1.3
 module load slim/5.1
 
+# === 2. Parameter Sweep Math ===
+MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
+REPLICAS_PER_VAL=50
+
+# Calcular índices
+IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
+CURRENT_MIG=${MIG_VALUES[$IDX]}
+REAL_REP=$(( ($SLURM_ARRAY_TASK_ID - 1) % $REPLICAS_PER_VAL + 1 ))
+
+echo "DEBUG INFO:"
+echo "Job ID Global: $SLURM_ARRAY_TASK_ID"
+echo "  -> Valor Migración: $CURRENT_MIG"
+echo "  -> Réplica #$REAL_REP del grupo"
+
 START_TIME=$(date +%s)
-TASK_ID=$SLURM_ARRAY_TASK_ID   # <--- Definimos esto PRIMERO para poder usarlo abajo
+TASK_ID=$SLURM_ARRAY_TASK_ID
 echo "Iniciando Job ID: $TASK_ID en $(hostname)"
 
 DIR_BASE="/mnt/data/dortega/hlopezh/Inf_MigSelection"
 
-# Definimos rutas de scripts y archivos base (Asegúrate que existen)
-R_SCRIPT="${DIR_BASE}/scripts/inference/infLikelihood_mutations.R"
-
-# Crear carpetas si no existen
-mkdir -p "${DIR_BASE}/data/subsets"
-mkdir -p "${DIR_BASE}/data/results_simulations" # Aseguramos donde SLiM guarda
-mkdir -p "${DIR_BASE}/data/results_LL"
-mkdir -p "${DIR_BASE}/logs"
-
-# ${1:-ambos} significa: "Usa la variable $1, pero si está vacía, usa 'ambos'"
+# Argumento de entrada (continuo, discreto, ambos)
 MODO=${1:-ambos}
+echo "--> Executing selected mode: $MODO"
 
-# === 2. Ejecutar Simulaciones SLiM ===
-echo "--> Modo de ejecución seleccionado: $MODO"
+# Definimos argumentos SLiM (Pasamos la migración aquí)
+# IMPORTANTE: Asegúrate que en tu SLiM usas defineConstant("MIG", ...)
+SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG"
 
 FILES_TO_PROCESS=()
 
+# === 3. Ejecución de SLiM ===
+
+# --- MODO CONTINUO ---
 if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
     echo "    Ejecutando SLiM: Continuous Space..."
-    slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Continuous_Space.slim"
     
-    # Agregamos los archivos de tipo 'C' a la lista de procesamiento
+    # CORRECCIÓN 1: Usamos $SLIM_ARGS
+    slim $SLIM_ARGS "${DIR_BASE}/scripts/Continuous_Space_Inference/Continuous_Space.slim"
+    
+    # Crear carpetas necesarias
+    mkdir -p "${DIR_BASE}/data/results_Continuous/subsets"
+    mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim"
+    mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_LL"
+    mkdir -p "${DIR_BASE}/logs/Continuous"
+
     FILES_TO_PROCESS+=(
         "C_FULL_seleccion_m2"
         "C_FULL_neutros_m1"
@@ -48,11 +66,19 @@ if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
     )
 fi
 
+# --- MODO DISCRETO ---
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     echo "    Ejecutando SLiM: Discrete Space..."
-    slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Discrete_Space.slim"
     
-    # Agregamos los archivos de tipo 'D' a la lista de procesamiento
+    # CORRECCIÓN 1: Usamos $SLIM_ARGS
+    slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
+    
+    # Crear carpetas necesarias
+    mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
+    mkdir -p "${DIR_BASE}/logs/Discrete"
+    
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m2"
         "D_FULL_neutros_m1"
@@ -67,42 +93,39 @@ if [ ${#FILES_TO_PROCESS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# === 3. Procesamiento y Análisis (Bucle Maestro) ===
-
-# Lista de modelos a procesar
-#Los prefijos son los modelos. Nos ayudará a entender qué estamos analizando
-FILES_TO_PROCESS=(
-    "C_FULL_seleccion_m2"
-    "C_FULL_neutros_m1"
-    "C_aDNA_scattered_neutros_m1"     
-    "C_aDNA_scattered_seleccion_m2"    
-    "D_FULL_seleccion_m2"
-    "D_FULL_neutros_m1"
-    "D_aDNA_scattered_neutros_m1"      
-    "D_aDNA_scattered_seleccion_m2"    
-
-
+# === 4. Análisis en R (Dinámico) ===
 echo "--> Iniciando extracción y análisis en R..."
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     
-    # A. Rutas Dinámicas
-    # Archivo que acaba de salir de SLiM
-    SLIM_OUTPUT="${DIR_BASE}/data/results_simulations/${PREFIJO}_${TASK_ID}.csv"
-    # Archivo intermedio con solo los IDs limpios
-    SUBSET_OUTPUT="${DIR_BASE}/data/subsets/subset_${PREFIJO}_${TASK_ID}.txt"
+    # CORRECCIÓN 2: Determinar rutas dinámicamente según el prefijo del archivo
+    # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
+    if [[ "$PREFIJO" == "C_"* ]]; then
+        BASE_PATH_TYPE="results_Continuous"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
+    else
+        BASE_PATH_TYPE="results_Discrete"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations.R"
+    fi
     
-    # B. Verificación y Extracción (AWK)
+    CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim"
+    CURRENT_SUBSET_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/subsets"
+    
+    SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
+    SUBSET_OUTPUT="${CURRENT_SUBSET_DIR}/subset_${PREFIJO}_${TASK_ID}.txt"
+    
+    # Verificación y Extracción (AWK)
     if [ -f "${SLIM_OUTPUT}" ]; then
         
         # Extraer IDs (columna 2, saltando encabezado)
         awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"
         
-        # C. Ejecutar R para ESTE modelo específico
+        # Ejecutar R
         if [ -s "${SUBSET_OUTPUT}" ]; then
             echo "    [${PREFIJO}] Analizando en R..."
-         
-            Rscript --vanilla "${R_SCRIPT}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}
+            
+            # CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
+            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}"
             
         else
             echo "    ALERTA: El subset para ${PREFIJO} quedó vacío."
@@ -113,7 +136,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     fi
 done
 
-# === 4. Finalizar ===
+# === 5. Finalizar ===
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 echo "Job ${TASK_ID} finalizado."
