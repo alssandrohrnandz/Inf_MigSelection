@@ -31,14 +31,18 @@ START_TIME=$(date +%s)
 TASK_ID=$SLURM_ARRAY_TASK_ID
 echo "Iniciando Job ID: $TASK_ID en $(hostname)"
 
+echo "--> Modo: $MODO | Acción: $ACCION"
+
 DIR_BASE="/mnt/data/dortega/hlopezh/Inf_MigSelection"
 
 # Argumento de entrada (continuo, discreto, ambos)
 MODO=${1:-ambos}
-echo "--> Executing selected mode: $MODO"
+# Argumento 2: Acción (completo, solo_analisis) - Por defecto: completo
+ACCION=${2:-completo}
 
-# Definimos argumentos SLiM (Pasamos la migración aquí)
-# IMPORTANTE: Asegúrate que en tu SLiM usas defineConstant("MIG", ...)
+echo "--> Mode: $MODO | Action: $ACCION"
+
+# Definiendo argumentos de SLiM
 SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG"
 
 FILES_TO_PROCESS=()
@@ -47,11 +51,7 @@ FILES_TO_PROCESS=()
 
 # --- MODO CONTINUO ---
 if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
-    echo "    Ejecutando SLiM: Continuous Space..."
-    
-    # CORRECCIÓN 1: Usamos $SLIM_ARGS
-    slim $SLIM_ARGS "${DIR_BASE}/scripts/Continuous_Space_Inference/Continuous_Space.slim"
-    
+
     # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Continuous/subsets"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim"
@@ -64,15 +64,17 @@ if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
         "C_aDNA_scattered_neutros_m1"
         "C_aDNA_scattered_seleccion_m2"
     )
+    if [[ "$ACCION" != "solo_analisis" ]]; then
+        echo "    Ejecutando SLiM: Continuous Space..."
+        slim $SLIM_ARGS "${DIR_BASE}/scripts/Continuous_Space_Inference/Continuous_Space.slim"
+    else
+        echo "    SALTANDO SLiM (Continuous Space) - Se usarán archivos existentes."
+    fi
 fi
 
 # --- MODO DISCRETO ---
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
-    echo "    Ejecutando SLiM: Discrete Space..."
-    
-    # CORRECCIÓN 1: Usamos $SLIM_ARGS
-    slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
-    
+
     # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
@@ -85,6 +87,12 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
         "D_aDNA_scattered_neutros_m1"
         "D_aDNA_scattered_seleccion_m2"
     )
+    if [[ "$ACTION" != "solo_analisis" ]]; then
+        echo " Ejecutando SLiM: Discrete Space .."
+        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
+        else 
+            echo "SALTANDO SLiM - Se usarán archivos existentes"
+    fi
 fi
 
 # Verificación de seguridad
