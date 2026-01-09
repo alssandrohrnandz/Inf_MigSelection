@@ -1,21 +1,16 @@
 initialize() {
 	//initializeSex("A"); 
 	defineConstant("SubpopSize", 1000);
-	defineConstant("Migration", 0.05);
-	//TODO: Valores a experimentar de migración, 0.1 0.01, 0.001, 0.0001, 0.00001
+	if (!exists("MIG")) //TODO: Valores a experimentar de migración, 0.1 0.01, 0.001, 0.0001, 0.00001
+		defineConstant("MIG",0.05);
+	defineConstant("Migration", MIG);
 	defineConstant("pop", 10);
 	if (!exists("id_replica"))
 		defineConstant("id_replica", 1);
 	defineConstant("matrix_size", pop*pop);
-	
-	// RUTA DE SALIDA (Ajusta esto a tu carpeta)
-	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_simulations/");
-	
+	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/");
 	defineConstant("MU", 1.2e-8);
-	
 	initializeMutationRate(MU);
-	
-	// m1: Neutra, m2: Selección (s=0.05)
 	initializeMutationType("m1", 0.5, "f", 0.0);
 	initializeMutationType("m2", 0.5, "f", 0.01);
 	

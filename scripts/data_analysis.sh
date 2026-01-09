@@ -27,12 +27,45 @@ mkdir -p "${DIR_BASE}/data/results_simulations" # Aseguramos donde SLiM guarda
 mkdir -p "${DIR_BASE}/data/results_LL"
 mkdir -p "${DIR_BASE}/logs"
 
-# === 2. Ejecutar Simulaciones SLiM ===
-echo "--> Ejecutando SLiM (Continuous y Discrete)..."
+# ${1:-ambos} significa: "Usa la variable $1, pero si está vacía, usa 'ambos'"
+MODO=${1:-ambos}
 
-# Nota: Asegúrate que tus scripts de SLiM guarden los CSVs en: ${DIR_BASE}/data/results_simulations/
-slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Continuous_Space.slim"
-slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Discrete_Space.slim"
+# === 2. Ejecutar Simulaciones SLiM ===
+echo "--> Modo de ejecución seleccionado: $MODO"
+
+FILES_TO_PROCESS=()
+
+if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
+    echo "    Ejecutando SLiM: Continuous Space..."
+    slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Continuous_Space.slim"
+    
+    # Agregamos los archivos de tipo 'C' a la lista de procesamiento
+    FILES_TO_PROCESS+=(
+        "C_FULL_seleccion_m2"
+        "C_FULL_neutros_m1"
+        "C_aDNA_scattered_neutros_m1"
+        "C_aDNA_scattered_seleccion_m2"
+    )
+fi
+
+if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
+    echo "    Ejecutando SLiM: Discrete Space..."
+    slim -d id_replica=$TASK_ID "${DIR_BASE}/scripts/slim/Discrete_Space.slim"
+    
+    # Agregamos los archivos de tipo 'D' a la lista de procesamiento
+    FILES_TO_PROCESS+=(
+        "D_FULL_seleccion_m2"
+        "D_FULL_neutros_m1"
+        "D_aDNA_scattered_neutros_m1"
+        "D_aDNA_scattered_seleccion_m2"
+    )
+fi
+
+# Verificación de seguridad
+if [ ${#FILES_TO_PROCESS[@]} -eq 0 ]; then
+    echo "Error: Modo desconocido '$MODO'. Usa: continuo, discreto o ambos."
+    exit 1
+fi
 
 # === 3. Procesamiento y Análisis (Bucle Maestro) ===
 
@@ -47,7 +80,7 @@ FILES_TO_PROCESS=(
     "D_FULL_neutros_m1"
     "D_aDNA_scattered_neutros_m1"      
     "D_aDNA_scattered_seleccion_m2"    
-)
+
 
 echo "--> Iniciando extracción y análisis en R..."
 
