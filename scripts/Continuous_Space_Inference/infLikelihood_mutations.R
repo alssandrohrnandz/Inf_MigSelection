@@ -207,7 +207,7 @@ for (snp_actual in snps_to_analyze) {
   output_path <- file.path(output_dir, output_filename)
   
   best_params <- results[which.max(results$LL),]
-  # print(paste("Guardando:", output_path, "Max LL:", best_params$LL))
+  print(paste("Guardando:", output_path, "Max LL:", best_params$LL))
   
   write.table(results, file=output_path, row.names=FALSE, quote = FALSE)
 }
