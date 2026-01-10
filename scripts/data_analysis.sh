@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --job-name=Sim_Mig_Wave
 #SBATCH --partition=defq
-#SBATCH --output=logs/job_%A_%a.out
-#SBATCH --error=logs/job_%A_%a.err
+#SBATCH --output=../logs/job_%A_%a.out
+#SBATCH --error=../logs/job_%A_%a.err
 #SBATCH --array=1-250                # 5 valores migración * 50 réplicas = 250
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
@@ -34,7 +34,6 @@ echo "Iniciando Job ID: $TASK_ID en $(hostname)"
 echo "--> Modo: $MODO | Acción: $ACCION"
 
 DIR_BASE="/mnt/data/dortega/hlopezh/Inf_MigSelection"
-
 # Argumento de entrada (continuo, discreto, ambos)
 MODO=${1:-ambos}
 # Argumento 2: Acción (completo, solo_analisis) - Por defecto: completo
@@ -56,7 +55,6 @@ if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Continuous/subsets"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_LL"
-    mkdir -p "${DIR_BASE}/logs/Continuous"
 
     FILES_TO_PROCESS+=(
         "C_FULL_seleccion_m2"
@@ -79,10 +77,8 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
-    mkdir -p "${DIR_BASE}/logs/Discrete"
-    
     FILES_TO_PROCESS+=(
-        "D_FULL_seleccion_m2"
+        "D_FULL_seleccion_m2"a
         "D_FULL_neutros_m1"
         "D_aDNA_scattered_neutros_m1"
         "D_aDNA_scattered_seleccion_m2"

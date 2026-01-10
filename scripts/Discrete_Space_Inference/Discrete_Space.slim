@@ -103,7 +103,7 @@ initialize() {
 			//Vectorizacion para no leer todas las mutaciones
 			//Esta parte es importante porque anteriormente usaba un (sim.mutationFrequencies(NULL,m)>0.0001){}
 			//lo cuál me retraso mucho el cálculo de las frecuencias, este método es mejor.
-			/Actua como filtro de calidad
+			//Actua como filtro de calidad
 			//TODO: Revisar con Diego en un futuro pero no es prioritaria esta seccion
 			global_freqs = sim.mutationFrequencies(NULL, muts_in_sample); //Calcula todas las frecuencias
 			pass_filter = (global_freqs > 0.0001); // Aquí solo escogemos las mutaciones
