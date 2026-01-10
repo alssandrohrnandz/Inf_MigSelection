@@ -87,45 +87,43 @@ initialize() {
 	lines_aDNA_m2 = ""; // Acumulador para m2
 	
 	for (subpop in sampled_pops) {
-		
-		// --- NUEVO: TAMAÑO DE MUESTRA VARIABLE ---
-		// Elegimos un número aleatorio entre 1 y 100 para simular la riqueza del yacimiento
-		// rdunif(cantidad, min, max)
+		//aDNA conditions
 		num_inds_to_sample = rdunif(1, 1, 100);
 		
-		// Muestreamos esos individuos
+		//Sample of individuals
 		sampled_inds = subpop.sampleIndividuals(num_inds_to_sample);
 		if (size(sampled_inds) > 0) {
-			// 1. CAMBIO: Usamos .haplosomes en lugar de .genomes (Versiones nuevas de SLiM)
 			sampled_genomes = sampled_inds.haplosomes;
-			
-			// El total de cromosomas observados (haplosomas)
 			current_chr_tot = size(sampled_genomes);
-			
-			// Obtenemos mutaciones únicas en esta muestra
 			muts_in_sample = unique(sampled_genomes.mutations);
-			
-			// Coordenadas
+			// Coordenadas (cap 17.3)
 			index = subpop.id - 1;
 			x_pos = (index % n) + 1;
 			y_pos = asInteger(index / n) + 1;
-			for (m in muts_in_sample) {
+			//Vectorizacion para no leer todas las mutaciones
+			//Esta parte es importante porque anteriormente usaba un (sim.mutationFrequencies(NULL,m)>0.0001){}
+			//lo cuál me retraso mucho el cálculo de las frecuencias, este método es mejor.
+			/Actua como filtro de calidad
+			//TODO: Revisar con Diego en un futuro pero no es prioritaria esta seccion
+			global_freqs = sim.mutationFrequencies(NULL, muts_in_sample); //Calcula todas las frecuencias
+			pass_filter = (global_freqs > 0.0001); // Aquí solo escogemos las mutaciones
+			muts_to_process = muts_in_sample[pass_filter];
+
+			for (m in muts_to_process) {
+				count_in_sample = sum(sampled_genomes.mutations == m); // NUEVO total
+				freq_in_sample = count_in_sample / asFloat(current_chr_tot); //NUEVO freq in sample
 				mut_type_str = "NA";
-				if (m.mutationType == m1) mut_type_str = "m1";
-				else if (m.mutationType == m2) mut_type_str = "m2";
-				if (mut_type_str != "NA") {
-
-					count_in_sample = sum(sampled_genomes.mutations == m);
-
-					freq_in_sample = count_in_sample / asFloat(current_chr_tot);
-					
-					line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
-					if (m.mutationType== m1) {
-						lines_aDNA_m1 = c(lines_aDNA_m1, line);
-					} else if (m.mutationType==m2) {
-						lines_aDNA_m2 = c(lines_aDNA_m2, line);
-					}
+                if (m.mutationType == m1) {
+                    mut_type_str = "m1";
+                    line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
+                    lines_aDNA_m1 = c(lines_aDNA_m1, line);
+                } 
+                else if (m.mutationType == m2) {
+                    mut_type_str = "m2";
+                    line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
+                    lines_aDNA_m2 = c(lines_aDNA_m2, line);
 				}
+				
 			}
 		}
 	
@@ -155,6 +153,7 @@ initialize() {
 				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
 				lines_m2 = c(lines_m2, line);
 			}
+			
 		}
 		if (length(lines_m2) > 0)
 			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
@@ -166,18 +165,16 @@ initialize() {
 	if (size(muts_m1) > 0) {
 		lines_m1 = "";
 		for (m in muts_m1) {
-			if (sim.mutationFrequencies(NULL, m) > 0.01) {
-				for (subpop in sim.subpopulations) {
-					freq = sim.mutationFrequencies(subpop, m);
-					if (freq > 0) {
-						chr_tot = 2 * size(subpop.individuals);
-						allele_count = asInteger(round(freq * chr_tot));
-						index = subpop.id - 1;
-						x_pos = (index % n) + 1;
-						y_pos = asInteger(index / n) + 1;
-						line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-						lines_m1 = c(lines_m1, line);
-					}
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+				if (freq > 0) {
+					chr_tot = 2 * size(subpop.individuals);
+					allele_count = asInteger(round(freq * chr_tot));
+					index = subpop.id - 1;
+					x_pos = (index % n) + 1;
+					y_pos = asInteger(index / n) + 1;
+					line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+					lines_m1 = c(lines_m1, line);
 				}
 			}
 		}
