@@ -203,7 +203,7 @@ for (snp_actual in snps_to_analyze) {
   # Si no existe, usamos el actual
   if(!dir.exists(output_dir)) output_dir <- "."
   
-  output_filename <- paste0("Analysis_", model_name, "_SNP_", snp_actual, ".txt")
+  output_filename <- paste0("Analysis_", model_name, task_id,"_SNP_", snp_actual, ".txt")
   output_path <- file.path(output_dir, output_filename)
   
   best_params <- results[which.max(results$LL),]
