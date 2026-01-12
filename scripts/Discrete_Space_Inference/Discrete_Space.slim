@@ -140,46 +140,45 @@ initialize() {
 	// --- M2 FULL ---
 	muts_m2 = sim.mutationsOfType(m2);
 	if (size(muts_m2) > 0) {
-		lines_m2 = "";
+		//asumiendo 10x10 pops
+		all_lines_m2= NULL;
+		subpop_ids = sim.subpopulations.id; // obtenemos los id's de todas las subpop
+		indices = subpop_ids-1;
+		x_pos = (index % n) + 1;
+		y_pos = asInteger(index / n) + 1; 
+		subpop_sizes= sim.subpopulations.individualCount * 2;
 		for (m in muts_m2) {
-			for (subpop in sim.subpopulations) {
-				freq = sim.mutationFrequencies(subpop, m);
-				// Guardamos todo, incluso ceros para m2
-				chr_tot = 2 * size(subpop.individuals);
-				allele_count = asInteger(round(freq * chr_tot));
-				index = subpop.id - 1;
-				x_pos = (index % n) + 1;
-				y_pos = asInteger(index / n) + 1;
-				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-				lines_m2 = c(lines_m2, line);
-			}
-			
+			freqs = sim.mutationFrequencies(sim.subpopulations,m);
+			allele_counts = asInteger(round(freqs * subpop_sizes));
+			new_lines = paste(sim.cycle, m.id, x_positions, y_positions, freqs, allele_counts, subpop_sizes, sep=",");
+			all_lines_m2 = c(all_lines_m2, new_lines);
 		}
-		if (length(lines_m2) > 0)
-			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
-			paste(lines_m2, sep="\n"), append=T);
+			
+	}
+
+	if (size(all_lines_m2) > 0) {
+		writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
+		paste(all_lines_m2, sep="\n"), append=T);
 	}
 	
-	// --- M1 FULL ---
+	
 	muts_m1 = sim.mutationsOfType(m1);
 	if (size(muts_m1) > 0) {
-		lines_m1 = "";
+		all_lines_m1=NULL;
+		subpop_ids = sim.subpopulations.id; // obtenemos los id's de todas las subpop
+		indices = subpop_ids-1;
+		x_pos = (index % n) + 1;
+		y_pos = asInteger(index / n) + 1; 
+		subpop_sizes= sim.subpopulations.individualCount * 2;
 		for (m in muts_m1) {
-			for (subpop in sim.subpopulations) {
-				freq = sim.mutationFrequencies(subpop, m);
-				if (freq > 0) {
-					chr_tot = 2 * size(subpop.individuals);
-					allele_count = asInteger(round(freq * chr_tot));
-					index = subpop.id - 1;
-					x_pos = (index % n) + 1;
-					y_pos = asInteger(index / n) + 1;
-					line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-					lines_m1 = c(lines_m1, line);
-				}
-			}
+			freqs = sim.mutationFrequencies(sim.subpopulations,m);
+			allele_counts = asInteger(round(freqs * subpop_sizes));
+			new_lines = paste(sim.cycle, m.id, x_positions, y_positions, freqs, allele_counts, subpop_sizes, sep=",");
+			all_lines_m1 = c(all_lines_m1, new_lines);
 		}
-		if (length(lines_m1) > 0)
-			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",
-			paste(lines_m1, sep="\n"), append=T);
+	}	
+	if size(all_lines_m1) > 0){
+		writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",
+		paste(all_lines_m1, sep="\n"), append=T);
 	}
 }
