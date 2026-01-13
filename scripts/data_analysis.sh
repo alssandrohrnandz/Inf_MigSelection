@@ -83,17 +83,25 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
+    
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m2"
         "D_FULL_neutros_m1"
         "D_aDNA_scattered_neutros_m1"
         "D_aDNA_scattered_seleccion_m2"
     )
-    if [[ "$ACCION" != "solo_analisis" ]]; then
-        echo " Ejecutando SLiM: Discrete Space .."
+
+    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
+
+    if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
+        
+        echo "--> [SKIP] Saltando SLiM (Solicitado 'solo_analisis' o archivo ya existente)."
+        
+    else 
+        
+        echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
         slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
-        else 
-            echo "SALTANDO SLiM - Se usarán archivos existentes"
+        
     fi
 fi
 
