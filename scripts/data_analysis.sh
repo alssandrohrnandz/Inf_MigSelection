@@ -17,6 +17,12 @@ module load slim/5.1
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
 REPLICAS_PER_VAL=50
 
+rm data/results_Discrete/outputs_LL/*.txt
+rm data/results_Continuous/outputs_LL/*.txt
+
+# Borra todo lo que haya en outputs_LL para empezar fresco
+
+
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
 CURRENT_MIG=${MIG_VALUES[$IDX]}
@@ -101,7 +107,6 @@ fi
 echo "--> Iniciando extracción y análisis en R..."
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
-    
     # CORRECCIÓN 2: Determinar rutas dinámicamente según el prefijo del archivo
     # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
     if [[ "$PREFIJO" == "C_"* ]]; then
@@ -121,8 +126,13 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     # Verificación y Extracción (AWK)
     if [ -f "${SLIM_OUTPUT}" ]; then
         
-        # Extraer IDs (columna 2, saltando encabezado)
-        awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"
+        if [[ "$PREFIJO" == *"m1"* ]]; then
+            echo "    [Subsampling] Seleccionando 1000 SNPs neutros al azar..."
+            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq | shuf | head -n 1000 > "${SUBSET_OUTPUT}"
+        else
+            echo "    [Full] Conservando todas las mutaciones bajo selección..."
+            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"
+        fi
         
         # Ejecutar R
         if [ -s "${SUBSET_OUTPUT}" ]; then

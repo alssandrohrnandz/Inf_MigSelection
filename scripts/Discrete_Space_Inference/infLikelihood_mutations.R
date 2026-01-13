@@ -39,7 +39,11 @@ MIN_GENERATIONS <- 3
 N_eff <- 1000
 
 # Parámetros de búsqueda
-DifussionValuesToCheck <- c(0.0000001,0.000005,0.000001,0.000005,0.00001,0.00005,0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.5,1)
+# Parámetros de búsqueda (Corregido: Sin duplicados y ordenado)
+DifussionValuesToCheck <- sort(unique(c(
+  0.0000001, 0.000001, 0.000005, 0.00001, 0.00005, 
+  0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1
+)))
 SelectionValuesToCheck <- seq(-0.05, 0.05, by=0.01)
 
 # === 3. Lectura de Datos Inteligente ===
@@ -203,7 +207,7 @@ for (snp_actual in snps_to_analyze) {
   # Si no existe, usamos el actual
   if(!dir.exists(output_dir)) output_dir <- "."
   
-  output_filename <- paste0("Analysis_", model_name, task_id,"_SNP_", snp_actual, ".txt")
+  output_filename <- paste0("Analysis_", model_name,"_" ,task_id,"_SNP_", snp_actual, ".txt")
   output_path <- file.path(output_dir, output_filename)
   
   best_params <- results[which.max(results$LL),]
