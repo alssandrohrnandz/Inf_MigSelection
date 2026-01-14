@@ -7,9 +7,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
-# ==========================================
-# 1. Argument Parsing & Configuration
-# ==========================================
+# 
 args <- commandArgs(trailingOnly = TRUE)
 
 if(length(args) < 4) {
@@ -25,9 +23,7 @@ prefix      <- if(!is.na(args[5])) args[5] else "Analysis"
 print(paste("Migration Rate (m):", m_value))
 print("Regex Pattern loaded for file search.")
 
-# ==========================================
-# 2. File Discovery & Loading
-# ==========================================
+#==
 
 # Pattern: Matches strictly the current prefix and the group of task_ids
 pattern_to_search <- paste0("^", prefix, ".*_", task_id_reg, "_SNP_.*\\.txt$")
@@ -72,9 +68,7 @@ file_groups <- split(shuffled_files, group_indices)
 print(paste("Generados", length(file_groups), "grupos Composite."))
 print(paste("Promedio archivos por grupo:", round(mean(sapply(file_groups, length)), 1)))
 
-# ==========================================
-# 3. Data Processing (Composite Likelihood)
-# ==========================================
+# 
 
 process_group <- function(files, group_idx) {
   group_name <- paste("Group", group_idx)
@@ -110,9 +104,7 @@ combined_data <- bind_rows(group_summaries)
 
 if(nrow(combined_data) == 0) stop("No valid data could be loaded.")
 
-# ==========================================
-# 4. Profile Likelihood Extraction
-# ==========================================
+# 
 
 profile_D <- combined_data %>%
   group_by(Group, D) %>%
@@ -128,9 +120,7 @@ max_points <- profile_D %>%
   filter(Profile_LL == max(Profile_LL)) %>%
   ungroup()
 
-# ==========================================
-# 5. Plotting (English Titles)
-# ==========================================
+# 
 
 # A. Profile Likelihood Curve for D (Line Plot)
 p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
@@ -168,12 +158,7 @@ p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
     panel.grid.major.x = element_blank()
   )
 
-# ==========================================
-# 6. Saving Outputs
-# ==========================================
 
-# CORRECCIÓN: Limpieza del nombre de archivo.
-# No podemos usar el regex con barras '|' en el nombre del archivo.
 # Usamos el valor de migración para nombrar el archivo limpiamente.
 clean_filename <- paste0(prefix, "_Composite_Mig_", m_value)
 
