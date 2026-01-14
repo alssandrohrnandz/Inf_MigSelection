@@ -10,6 +10,8 @@ freq_file   <- args[1]
 subset_file <- args[2]
 task_id     <- args[3]
 model_name  <- args[4]
+output_dir  <- args[5]
+
 
 if(length(args) < 4) {
   stop("Faltan argumentos. Se requieren: freq_file, subset_file, task_id, model_name")
@@ -34,6 +36,7 @@ GRID_SIZE <- 10
 dy <- dx <- 1
 n <- GRID_SIZE
 d <- 0.5
+S<-0.0
 MAX_STEPS <- 10000
 MIN_GENERATIONS <- 3
 N_eff <- 100
@@ -83,7 +86,7 @@ if (file.exists(subset_file) && file.info(subset_file)$size > 0) {
 }
 
 # Cálculos auxiliares si no vinieran de SLiM (SLiM ya da Count y Chr_Tot, pero esto asegura enteros)
-freq_data$AlleleCount <- round(freq_data$Frequency * freq_data$Chr_Tot) 
+#freq_data$AlleleCount <- round(freq_data$Frequency * freq_data$Chr_Tot) 
 freq_data$ChrOBS <- freq_data$Chr_Tot
 
 # === 5. Bucle Principal ===
@@ -153,7 +156,7 @@ for (snp_actual in snps_to_analyze) {
       maxsteps = 1e5
     )
     
-    # R devuelve la matriz vectorizada por COLUMNAS
+    #elimnar la columnas "time"
     ST3_mat <- as.matrix(ST3[,-1])
     
     ll <- 0
@@ -165,7 +168,7 @@ for (snp_actual in snps_to_analyze) {
       t_abs <- df_snp$Generation[j]
       time_idx <- match(t_abs, times_run)
       
-      if(is.na(time_idx)) next 
+      #if(is.na(time_idx)) next 
       
       # Cálculo de deriva
       t_elapsed <- t_abs - AlleleOriginAge
@@ -180,7 +183,7 @@ for (snp_actual in snps_to_analyze) {
       # Asumiendo que llenaste Conc0[ox, oy] (Fila=X, Col=Y)
       # La vectorización es (Columna-1)*n + Fila
       # Por lo tanto: (Y - 1) * n + X
-      spatial_idx <- (yg - 1) * n + xg 
+      spatial_idx <- (yg - 1) * n + xg #indexacion por ver 
       
       # Protección de índices
       if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
@@ -196,8 +199,8 @@ for (snp_actual in snps_to_analyze) {
       # if(i==1 && j < 5) print(paste("Gen:", t_abs, "X:", xg, "Y:", yg, "Raw:", pred_freq_raw, "Final:", pred_freq))
 
       ll <- ll + dbetabinom(
-        x    = df_snp$AlleleCount[j],
-        size = df_snp$ChrOBS[j],
+        x    = df_snp$Count[j],
+        size = df_snp$Chr_Tot[j],
         prob = pred_freq,
         rho  = rho_val,
         log  = TRUE
@@ -212,13 +215,12 @@ for (snp_actual in snps_to_analyze) {
   # El script de bash definio resultados en data/results_LL
   
   # Extraemos el directorio base del archivo de entrada
-  input_dir <- dirname(freq_file) 
+  #input_dir <- dirname(freq_file) 
   # Subimos un nivel y entramos a results_LL (asumiendo estructura estandar)
   # Si input es .../data/results_simulations/archivo.csv -> .../data/results_LL/
-  output_dir <- file.path(dirname(input_dir), "outputs_LL")
   
   # Si no existe, usamos el actual
-  if(!dir.exists(output_dir)) output_dir <- "."
+  #if(!dir.exists(output_dir)) output_dir <- "."
   
   output_filename <- paste0("Analysis_", model_name,"_" ,task_id,"_SNP_", snp_actual, ".txt")
   output_path <- file.path(output_dir, output_filename)
