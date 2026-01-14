@@ -4,7 +4,7 @@ library(dplyr)
 library(tidyverse)
 library(VGAM)
 
-# === 1. Lectura de Argumentos ===
+#TODO: GENERAR EL ANALISIS PARA TODOS LOS SNP de una simulación.
 args <- commandArgs(trailingOnly = TRUE)
 freq_file   <- args[1]
 subset_file <- args[2]

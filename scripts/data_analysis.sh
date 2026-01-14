@@ -85,12 +85,11 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
     
     FILES_TO_PROCESS+=(
-        #"D_FULL_seleccion_m2"
-        "D_FULL_neutros_m1" #TODO: QUITAR EL TEST
+        "D_FULL_seleccion_m2"
+        "D_FULL_neutros_m1" #TODO:Quitar
         #"D_aDNA_scattered_neutros_m1"
         #"D_aDNA_scattered_seleccion_m2"
     )
-    #TODO: QUITAR EL TEST
     FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
@@ -137,7 +136,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         
         if [[ "$PREFIJO" == *"m1"* ]]; then
             echo "    [Subsampling] Seleccionando 1000 SNPs neutros al azar..."
-            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq | shuf | head -n 1000 > "${SUBSET_OUTPUT}"
+            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq  > "${SUBSET_OUTPUT}"
         else
             echo "    [Full] Conservando todas las mutaciones bajo selección..."
             awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"

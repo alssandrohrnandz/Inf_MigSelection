@@ -2,6 +2,7 @@
 
 # Load libraries silently
 suppressPackageStartupMessages({
+  library(scales)
   library(dplyr)
   library(tidyverse)
   library(ggplot2)
@@ -110,7 +111,7 @@ profile_D <- combined_data %>%
   group_by(Group, D) %>%
   summarise(
     Profile_LL = max(LL_sum),      # Best LL for this D (optimizing s)
-    Best_s = s[which.max(LL_sum)], # The s value associated with that max
+    Best_D = s[which.max(LL_sum)], # The s value associated with that max
     .groups = "drop"
   )
 
@@ -121,12 +122,15 @@ max_points <- profile_D %>%
   ungroup()
 
 # 
+head(profile_D,15)
+head(max_points,20)
 
 # A. Profile Likelihood Curve for D (Line Plot)
 p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
   geom_line(size = 0.8, alpha = 0.8) +
-  geom_point(data = max_points, aes(x = D, y = Profile_LL), 
+  geom_point(data = max_points, aes(x = D), y = Profile_LL), 
              size = 3, shape = 21, fill = "white", stroke = 1.5) +
+  scale_x_log10()+           
   labs(
     title = "Composite Likelihood Profile (Diffusion)",
     # CORRECCIÓN: Usamos m_value en el título, no el regex feo
@@ -139,25 +143,41 @@ p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
   theme(legend.position = "none") # Ocultamos leyenda si son 50 grupos (mucho ruido)
 
 # B. Distribution of Estimated D (Violin/Boxplot)
-teoric_value <- as.numeric(m_value)
-p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
-  geom_violin(fill = "grey95", color = "grey60", draw_quantiles = 0.5) +
+teoric_value_num <- as.numeric(teoric_value)
+
+p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) + 
+  
+  # 1. Geometrías (Datos crudos)
+  geom_violin(fill = "grey95", color = "grey60") +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
   geom_jitter(width = 0.05, height = 0, color = "#2c7bb6", size = 2, alpha = 0.7) +
-  geom_hline(yintercept = teoric_value, linetype = "dashed", color = "#d7191c", linewidth = 1) +
+  
+  # 2. Línea Teórica (Usamos el valor ORIGINAL: 0.00001)
+  # ggplot se encargará de ponerla en la posición logarítmica correcta (-5)
+  geom_hline(yintercept = teoric_value_num, linetype = "dashed", color = "#d7191c", linewidth = 1) +
+  
+  # 3. LA SOLUCIÓN MÁGICA: Escala Logarítmica en el Eje Y
+  scale_y_log10(
+    # Cortes manuales para que se vean bonitos en tu rango
+    breaks = c(1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 0.5, 1),
+    # Etiquetas en formato científico (10^-5)
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  annotation_logticks(sides = "l") + # Rayitas de logaritmo a la izquierda
+  
+  # 4. Etiquetas
   labs(
     title = "Variance of D Estimation",
-    # CORRECCIÓN: Usamos actual_groups en el subtítulo
     subtitle = paste0("Distribution of Maxima across ", actual_groups, " random Composite groups"),
     x = "",
-    y = "Estimated D"
+    y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale"))
   ) +
   theme_bw() +
   theme(
     axis.ticks.x = element_blank(),
-    panel.grid.major.x = element_blank()
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank()
   )
-
 
 # Usamos el valor de migración para nombrar el archivo limpiamente.
 clean_filename <- paste0(prefix, "_Composite_Mig_", m_value)

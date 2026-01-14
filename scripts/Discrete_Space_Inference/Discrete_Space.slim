@@ -12,15 +12,15 @@ initialize() {
 	defineConstant("MU", 1.2e-8);
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.0); //TODO: Por ahora este cambio 
+	initializeMutationType("m2", 0.5, "f", 0.05); //TODO: Por ahora este cambio 
 	
-	initializeGenomicElementType("g1", c(m1,m2), c(1.0, 0.0)); //TODO: Por ahora este cambio
+	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); //TODO: Por ahora este cambio
 	
 	rec_ends = NULL;
 	rec_rates = NULL;
 	for (index in 1:20) {
-		start = (index - 1)*100;
-		end = start + 99;
+		start = (index - 1)*200;
+		end = start + 199;
 		initializeGenomicElement(g1, start, end);
 		rec_ends = c(rec_ends, end);
 		rec_rates = c(rec_rates, 1e-8);
