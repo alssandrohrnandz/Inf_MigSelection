@@ -140,7 +140,7 @@ for (snp_actual in snps_to_analyze) {
     s_val <- results$s[i]
     pars <- c(D_val, d, s_val) 
     
-    # ODE
+    # ODE Solver
     ST3 <- ode.2D(
       y      = Conc0,
       times  = times_run,
@@ -153,35 +153,48 @@ for (snp_actual in snps_to_analyze) {
       maxsteps = 1e5
     )
     
+    # R devuelve la matriz vectorizada por COLUMNAS
     ST3_mat <- as.matrix(ST3[,-1])
     
-    # Likelihood Calculation
     ll <- 0
     
+    # Debugging (Imprimir solo para la primera iteración para ver si todo es 0)
+    # if(i == 1) print(paste("Max freq en matriz:", max(ST3_mat)))
+
     for(j in 1:nrow(df_snp)) {
       t_abs <- df_snp$Generation[j]
       time_idx <- match(t_abs, times_run)
       
       if(is.na(time_idx)) next 
       
+      # Cálculo de deriva
       t_elapsed <- t_abs - AlleleOriginAge
       if (t_elapsed < 1) t_elapsed <- 0.5 
-      
-      xg <- df_snp$X[j]
-      yg <- df_snp$Y[j]
-      spatial_idx <- (xg - 1) * n + yg
-      
-      # Protección contra índices fuera de rango
-      if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
-
-      pred_freq <- ST3_mat[time_idx, spatial_idx]
-      
-      piso_minimo <- 1 / (2 * N_eff)
-      pred_freq <- max(min(pred_freq, 1 - piso_minimo), piso_minimo)
-      
       rho_val <- 1 - exp(-t_elapsed / (2 * N_eff))
       rho_val <- max(rho_val, 1e-6)
+
+      xg <- df_snp$X[j]
+      yg <- df_snp$Y[j]
       
+      # --- CORRECCIÓN DE INDEXACIÓN ---
+      # Asumiendo que llenaste Conc0[ox, oy] (Fila=X, Col=Y)
+      # La vectorización es (Columna-1)*n + Fila
+      # Por lo tanto: (Y - 1) * n + X
+      spatial_idx <- (yg - 1) * n + xg 
+      
+      # Protección de índices
+      if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
+
+      pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
+      
+      # Piso mínimo (Evita log(0))
+      piso_minimo <- 1 / (2 * N_eff)
+      pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
+      
+      # DEBUG TEMPORAL: 
+      # Si pred_freq siempre es 0.0005, el modelo "no ve" el alelo en esa coordenada
+      # if(i==1 && j < 5) print(paste("Gen:", t_abs, "X:", xg, "Y:", yg, "Raw:", pred_freq_raw, "Final:", pred_freq))
+
       ll <- ll + dbetabinom(
         x    = df_snp$AlleleCount[j],
         size = df_snp$ChrOBS[j],

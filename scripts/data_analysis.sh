@@ -85,10 +85,10 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
     
     FILES_TO_PROCESS+=(
-        "D_FULL_seleccion_m2"
+        #"D_FULL_seleccion_m2"
         "D_FULL_neutros_m1"
-        "D_aDNA_scattered_neutros_m1"
-        "D_aDNA_scattered_seleccion_m2"
+        #"D_aDNA_scattered_neutros_m1"
+        #"D_aDNA_scattered_seleccion_m2"
     )
 
     FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
