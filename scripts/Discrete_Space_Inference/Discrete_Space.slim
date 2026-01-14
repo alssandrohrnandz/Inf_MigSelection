@@ -12,15 +12,15 @@ initialize() {
 	defineConstant("MU", 1.2e-8);
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.01);
+	initializeMutationType("m2", 0.5, "f", 0.0); //TODO: Por ahora este cambio 
 	
-	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01));
+	initializeGenomicElementType("g1", c(m1,m2), c(1.0, 0.0)); //TODO: Por ahora este cambio
 	
 	rec_ends = NULL;
 	rec_rates = NULL;
 	for (index in 1:20) {
-		start = (index - 1)*1000;
-		end = start + 999;
+		start = (index - 1)*100;
+		end = start + 99;
 		initializeGenomicElement(g1, start, end);
 		rec_ends = c(rec_ends, end);
 		rec_rates = c(rec_rates, 1e-8);
@@ -75,163 +75,57 @@ initialize() {
 	
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));
+	//Sin aDNA
+	//if (length(lines_aDNA_m1) > 0)
+	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
+	//	paste(lines_aDNA_m1, sep="\n"), append=T);
 	
-	// ==========================================================
-	// 1. GENERACIÓN DE DATOS DISPERSOS (aDNA SIMULADO HETEROGÉNEO)
-	// ==========================================================
+	//if (length(lines_aDNA_m2) > 0)
+	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
+	//	paste(lines_aDNA_m2, sep="\n"), append=T);
 	
-	// Seleccionamos al azar 2 ubicaciones donde "encontramos fósiles" en esta generación
-	sampled_pops = sample(sim.subpopulations, rdunif(1, 1, 10));
-	
-	lines_aDNA_m1 = ""; // Acumulador para m1
-	lines_aDNA_m2 = ""; // Acumulador para m2
-	
-	for (subpop in sampled_pops) {
-		//aDNA conditions
-		num_inds_to_sample = rdunif(1, 1, 100);
-		
-		//Sample of individuals
-		sampled_inds = subpop.sampleIndividuals(num_inds_to_sample);
-		if (size(sampled_inds) > 0) {
-			sampled_genomes = sampled_inds.haplosomes;
-			current_chr_tot = size(sampled_genomes);
-			muts_in_sample = unique(sampled_genomes.mutations);
-			// Coordenadas (cap 17.3)
-			index = subpop.id - 1;
-			x_pos = (index % n) + 1;
-			y_pos = asInteger(index / n) + 1;
-			//Vectorizacion para no leer todas las mutaciones
-			//Esta parte es importante porque anteriormente usaba un (sim.mutationFrequencies(NULL,m)>0.0001){}
-			//lo cuál me retraso mucho el cálculo de las frecuencias, este método es mejor.
-			//Actua como filtro de calidad
-			//TODO: Revisar con Diego en un futuro pero no es prioritaria esta seccion
-			global_freqs = sim.mutationFrequencies(NULL, muts_in_sample); //Calcula todas las frecuencias
-			pass_filter = (global_freqs > 0.0001); // Aquí solo escogemos las mutaciones
-			muts_to_process = muts_in_sample[pass_filter];
-
-			for (m in muts_to_process) {
-				count_in_sample = sum(sampled_genomes.mutations == m); // NUEVO total
-				freq_in_sample = count_in_sample / asFloat(current_chr_tot); //NUEVO freq in sample
-				mut_type_str = "NA";
-                if (m.mutationType == m1) {
-                    mut_type_str = "m1";
-                    line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
-                    lines_aDNA_m1 = c(lines_aDNA_m1, line);
-                } 
-                else if (m.mutationType == m2) {
-                    mut_type_str = "m2";
-                    line = paste(c(sim.cycle, m.id, mut_type_str, x_pos, y_pos, freq_in_sample, count_in_sample, current_chr_tot), sep=",");
-                    lines_aDNA_m2 = c(lines_aDNA_m2, line);
-				}
-				
+	// --- M2 FULL ---
+	muts_m2 = sim.mutationsOfType(m2);
+	if (size(muts_m2) > 0) {
+		lines_m2 = "";
+		for (m in muts_m2) {
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+				// Guardamos todo, incluso ceros para m2
+				chr_tot = 2 * size(subpop.individuals);
+				allele_count = asInteger(round(freq * chr_tot));
+				index = subpop.id - 1;
+				x_pos = (index % n) + 1;
+				y_pos = asInteger(index / n) + 1;
+				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+				lines_m2 = c(lines_m2, line);
 			}
 		}
-	
+		if (length(lines_m2) > 0)
+			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
+			paste(lines_m2, sep="\n"), append=T);
 	}
 	
-	if (length(lines_aDNA_m1) > 0)
-		writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-		paste(lines_aDNA_m1, sep="\n"), append=T);
-	
-	if (length(lines_aDNA_m2) > 0)
-		writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-		paste(lines_aDNA_m2, sep="\n"), append=T);
-	
-	// --- M2 FULL (CORREGIDO PARA FORMATO VERTICAL) ---
-    muts_m2 = sim.mutationsOfType(m2);
-    if (size(muts_m2) > 0) {
-        m_ids = muts_m2.id;
-        
-        // Iteramos Subpoblación por Subpoblación
-        for (subpop in sim.subpopulations) {
-            
-            // 1. Datos de la Subpoblación
-            idx = subpop.id - 1; 
-            x_p = (idx % n) + 1;
-            y_p = asInteger(idx / n) + 1;
-            pop_size_2n = subpop.individualCount * 2;
-            
-            // 2. CÁLCULO VECTORIZADO (Rápido)
-            // Obtenemos un vector con TODAS las frecuencias de esta subpoblación
-            freqs = sim.mutationFrequencies(subpop, muts_m2);
-            counts = asInteger(round(freqs * pop_size_2n));
-            
-            // 3. CONSTRUCCIÓN DEL CSV (Fila por Fila)
-            // Iteramos sobre los índices del vector 'freqs' para sacar los datos uno por uno
-            
-            subpop_lines = NULL; // Buffer temporal solo para esta subpoblación
-            
-            for (i in 0:(size(freqs)-1)) {
-                // AQUÍ ESTÁ LA CLAVE: Usamos [i] para sacar UN solo valor a la vez
-                line = paste(c(sim.cycle, m_ids[i], x_p, y_p, freqs[i], counts[i], pop_size_2n), sep=",");
-                subpop_lines = c(subpop_lines, line);
-            }
-            
-            // 4. Escritura inmediata (ahorra memoria RAM)
-            if (size(subpop_lines) > 0) {
-                writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",paste(subpop_lines, sep="\n"), append=T);
-            }
-        }
-    }
-
-    // --- M1 FULL (CORREGIDO PARA FORMATO VERTICAL) ---
-    muts_m1 = sim.mutationsOfType(m1); //TODO: REVISAR ESTA SECCION DE NUEVO
-    if (size(muts_m1) > 0) {
-        m_ids = muts_m1.id;
-        
-        for (subpop in sim.subpopulations) {
-            
-            idx = subpop.id - 1;
-            x_p = (idx % n) + 1;
-            y_p = asInteger(idx / n) + 1;
-            pop_size_2n = subpop.individualCount * 2;
-            
-            // Vectorizado
-            freqs = sim.mutationFrequencies(subpop, muts_m1);
-            counts = asInteger(round(freqs * pop_size_2n));
-            
-            subpop_lines = NULL;
-            
-            // Bucle para formatear texto línea por línea
-            for (i in 0:(size(freqs)-1)) {
-                // OPCIONAL: Filtro para no guardar millones de ceros en m1 (ahorra espacio en disco)
-                // if (freqs[i] > 0) { 
-                    line = paste(c(sim.cycle, m_ids[i], x_p, y_p, freqs[i], counts[i], pop_size_2n), sep=",");
-                    subpop_lines = c(subpop_lines, line);
-                // }
-            }
-            
-            if (size(subpop_lines) > 0) {
-                writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",paste(subpop_lines, sep="\n"), append=T);
-            }
-        }
-    }s_m1 = sim.mutationsOfType(m1);
-    if (size(muts_m1) > 0) {
-        m_ids = muts_m1.id;
-        
-        for (subpop in sim.subpopulations) {
-            idx = subpop.id - 1;
-            x_p = (idx % n) + 1;
-            y_p = asInteger(idx / n) + 1;
-            
-            // Frecuencias de miles de m1 en un solo paso
-            freqs = sim.mutationFrequencies(subpop, muts_m1);
-            
-            pop_size_2n = subpop.individualCount * 2;
-            counts = asInteger(round(freqs * pop_size_2n));
-            
-            // Filtrado opcional: Si quieres ahorrar espacio y no guardar ceros en m1
-            // mask = (freqs > 0);
-            // if (any(mask)) {
-            //    lines = paste(..., freqs[mask], ...);
-            //    writeFile(...);
-            // }
-            // Si quieres guardar TODO (incluso ceros), usa esto tal cual:
-            
-            lines = paste(sim.cycle, m_ids[i], x_p, y_p, freqs[i], counts[i], pop_size_2n, sep=",");
-            
-            writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",paste(lines, sep="\n"), append=T);
-        }
-    }	
-	
+	// --- M1 FULL ---
+	muts_m1 = sim.mutationsOfType(m1);
+	if (size(muts_m1) > 0) {
+		lines_m1 = "";
+		chr_tot = 2 * size(subpop.individuals);
+		for (m in muts_m1) {
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+					//if (freq > 0) {
+						allele_count = asInteger(round(freq * chr_tot));
+						index = subpop.id - 1;
+						x_pos = (index % n) + 1;
+						y_pos = asInteger(index / n) + 1;
+						line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+						lines_m1 = c(lines_m1, line);
+					//}
+			}
+		}
+		if (length(lines_m1) > 0)
+			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_test_" + id_replica + ".csv", //TODO: Quitar test
+			paste(lines_m1, sep="\n"), append=T);
+	}
 }
