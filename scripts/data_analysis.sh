@@ -135,7 +135,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     if [ -f "${SLIM_OUTPUT}" ]; then
         
         if [[ "$PREFIJO" == *"m1"* ]]; then
-            echo "    [Subsampling] Seleccionando 1000 SNPs neutros al azar..."
+            echo "    [Subsampling] Seleccionando N SNPs neutros al azar..."
             awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq  > "${SUBSET_OUTPUT}"
         else
             echo "    [Full] Conservando todas las mutaciones bajo selección..."
