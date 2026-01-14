@@ -7,4 +7,6 @@ logs/
 Inference_SLiM.Rproj
 data/
 .DS_Store 
-scripts/inference/.DS_Store 
+scripts/inference/.DS_Store
+!data/results_Discrete/figures/
+!data/results_Continuous/figures/

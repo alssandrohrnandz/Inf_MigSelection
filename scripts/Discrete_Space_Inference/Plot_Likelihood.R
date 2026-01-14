@@ -149,10 +149,12 @@ p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
   theme(legend.position = "none") # Ocultamos leyenda si son 50 grupos (mucho ruido)
 
 # B. Distribution of Estimated D (Violin/Boxplot)
+teoric_value <- as.numeric(m_value)
 p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
   geom_violin(fill = "grey95", color = "grey60", draw_quantiles = 0.5) +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
   geom_jitter(width = 0.05, height = 0, color = "#2c7bb6", size = 2, alpha = 0.7) +
+  geom_hline(yintercept = teoric_value, linetype = "dashed", color = "#d7191c", linewidth = 1) +
   labs(
     title = "Variance of D Estimation",
     # CORRECCIÓN: Usamos actual_groups en el subtítulo
