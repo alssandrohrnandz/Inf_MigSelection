@@ -36,10 +36,10 @@ GRID_SIZE <- 10
 dy <- dx <- 1
 n <- GRID_SIZE
 d <- 0.5
-S<-0.0
+s<-0.0
 MAX_STEPS <- 10000
 MIN_GENERATIONS <- 3
-N_eff <- 100
+N_eff <- 1000
 
 # Parámetros de búsqueda
 # Parámetros de búsqueda (Corregido: Sin duplicados y ordenado)
