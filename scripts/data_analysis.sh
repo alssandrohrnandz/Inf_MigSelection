@@ -86,11 +86,11 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     
     FILES_TO_PROCESS+=(
         #"D_FULL_seleccion_m2"
-        "D_FULL_neutros_m1"
+        "D_FULL_neutros_m1" #TODO: QUITAR EL TEST
         #"D_aDNA_scattered_neutros_m1"
         #"D_aDNA_scattered_seleccion_m2"
     )
-
+    #TODO: QUITAR EL TEST
     FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
@@ -127,7 +127,8 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     
     CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim"
     CURRENT_SUBSET_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/subsets"
-    
+    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL"
+
     SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
     SUBSET_OUTPUT="${CURRENT_SUBSET_DIR}/subset_${PREFIJO}_${TASK_ID}.txt"
     
@@ -147,7 +148,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
             echo "    [${PREFIJO}] Analizando en R..."
             
             # CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
-            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}"
+            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}"
             
         else
             echo "    ALERTA: El subset para ${PREFIJO} quedó vacío."
