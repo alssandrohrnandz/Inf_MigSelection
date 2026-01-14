@@ -17,8 +17,8 @@ module load slim/5.1
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
 REPLICAS_PER_VAL=50
 
-rm data/results_Discrete/outputs_LL/*.txt
-rm data/results_Continuous/outputs_LL/*.txt
+#rm data/results_Discrete/outputs_LL/*.txt
+#rm data/results_Continuous/outputs_LL/*.txt
 
 # Borra todo lo que haya en outputs_LL para empezar fresco
 
