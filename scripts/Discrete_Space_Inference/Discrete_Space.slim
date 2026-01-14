@@ -19,8 +19,8 @@ initialize() {
 	rec_ends = NULL;
 	rec_rates = NULL;
 	for (index in 1:20) {
-		start = (index - 1)*200;
-		end = start + 199;
+		start = (index - 1)*100;
+		end = start + 99;
 		initializeGenomicElement(g1, start, end);
 		rec_ends = c(rec_ends, end);
 		rec_rates = c(rec_rates, 1e-8);
