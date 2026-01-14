@@ -36,7 +36,7 @@ n <- GRID_SIZE
 d <- 0.5
 MAX_STEPS <- 10000
 MIN_GENERATIONS <- 3
-N_eff <- 1000
+N_eff <- 100
 
 # Parámetros de búsqueda
 # Parámetros de búsqueda (Corregido: Sin duplicados y ordenado)
@@ -188,7 +188,7 @@ for (snp_actual in snps_to_analyze) {
       pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
       
       # Piso mínimo (Evita log(0))
-      piso_minimo <- 1 / (2 * N_eff)
+      piso_minimo <- 1e-6
       pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
       
       # DEBUG TEMPORAL: 
