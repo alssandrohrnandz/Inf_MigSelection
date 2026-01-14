@@ -1,484 +1,184 @@
-library(dplyr) #######CON JOB_ID
+#!/usr/bin/env Rscript
 
-output_dir <- "/Users/miel_/Documents/Doctorado/output/"
+# Load libraries silently
+suppressPackageStartupMessages({
+  library(dplyr)
+  library(tidyverse)
+  library(ggplot2)
+})
 
-for (i in 1:10){
+# ==========================================
+# 1. Argument Parsing & Configuration
+# ==========================================
+args <- commandArgs(trailingOnly = TRUE)
 
-group_results <- list()
-pattern_to_search <- paste0("^SelectionDiffusion_Analysis_.*_Job_",i,"\\.txt$") 
-pattern_to_search
+if(length(args) < 4) {
+  stop("Usage: Rscript Plot_Likelihood.R <Input_Dir> <Output_Dir> <Task_ID_Regex> <Migration_Value> [Prefix]")
+}
+
+input_dir   <- args[1]
+output_dir  <- args[2]
+task_id_reg <- args[3] # Ahora esto es un REGEX: "(1|2|...|50)"
+m_value     <- args[4] 
+prefix      <- if(!is.na(args[5])) args[5] else "Analysis" 
+
+print(paste("Migration Rate (m):", m_value))
+print("Regex Pattern loaded for file search.")
+
+# ==========================================
+# 2. File Discovery & Loading
+# ==========================================
+
+# Pattern: Matches strictly the current prefix and the group of task_ids
+pattern_to_search <- paste0("^", prefix, ".*_", task_id_reg, "_SNP_.*\\.txt$")
+
+print(paste("Searching pattern:", substr(pattern_to_search, 1, 50), "..."))
 
 file_list <- list.files(
-  path = "/Users/miel_/Documents/Doctorado/LL/m_05",   #empirical_data",
-  pattern = pattern_to_search,
-  full.names = TRUE
-)
-if (length(file_list) == 0) {
-  print(paste("ADVERTENCIA: No se encontraron archivos para el Job/Grupo", i))
-  next # Pasar a la siguiente iteración si no hay archivos
-}
-
-group_data <- do.call(rbind, lapply(file_list, function(f) {
-  # Usar tryCatch es una buena práctica para archivos corruptos/vacíos
-  df <- tryCatch(read.table(f, header = TRUE), error = function(e) {
-    warning(paste("Error leyendo archivo:", f, e$message))
-    return(NULL)
-  })
-  return(df)
-}))
-
-if (is.null(group_data) || nrow(group_data) == 0) {
-  print(paste("ADVERTENCIA: Datos vacíos o fallidos para el Job/Grupo", i))
-  next
-}
-
-summary <- group_data %>%
-  group_by(D) %>%
-  summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop") # Usar na.rm=TRUE
-
-new_summary<-summary[2:62,]
-
-plot(new_summary$D,new_summary$LL_sum)
-
-max_ll_index <- which.max(new_summary$LL_sum)
-max_D <- new_summary$D[max_ll_index]
-max_LL <- new_summary$LL_sum[max_ll_index]
-
-file_name <- paste0(output_dir,"ll_empirical_data_job_",i,".png")
-
-png(filename = file_name, width = 730, height = 400)
-
-plot(new_summary$D, new_summary$LL_sum,
-     xlab = "Parámetro D",
-     ylab = "Verosimilitud Compuesta (300 alelos)",
-     main = paste("Verosimilitud Compuesta vs. Parámetro D\n (300 alelos aleatorios). Grupo=", i),
-     pch = 19,
-     col = "blue")
-lines(new_summary$D, new_summary$LL_sum, col = "red", lwd = 2)
-points(max_D, max_LL, col = "green", pch = 17, cex = 1.5) # Triángulo grande
-text(max_D, max_LL,
-     labels = paste0("D=", max_D),
-     pos = 1, # 4 = a la derecha
-     col = "green")
-file_name <- paste(output_dir, "/ll_job_", i,"_v2", ".png")
-dev.off()
-}
-
-# Inicializar una lista para guardar los resultados máximos de cada Job/Grupo
-max_results <- list() 
-output_dir <- "/Users/miel_/Documents/Doctorado/output/"
-
-for (i in 1:10){
-  
-  group_results <- list()
-  pattern_to_search <- paste0("^SelectionDiffusion_Analysis_.*_Job_",i,"\\.txt$")
-  
-  file_list <- list.files(
-    path = "/Users/miel_/Documents/Doctorado/LL/m_05/",
-    pattern = pattern_to_search,
-    full.names = TRUE
-  )
-  
-  if (length(file_list) == 0) {
-    print(paste("ADVERTENCIA: No se encontraron archivos para el Job/Grupo", i))
-    next # Pasar a la siguiente iteración si no hay archivos
-  }
-  
-  group_data <- do.call(rbind, lapply(file_list, function(f) {
-    df <- tryCatch(read.table(f, header = TRUE), error = function(e) {
-      warning(paste("Error leyendo archivo:", f, e$message))
-      return(NULL)
-    })
-    return(df)
-  }))
-  
-  if (is.null(group_data) || nrow(group_data) == 0) {
-    print(paste("ADVERTENCIA: Datos vacíos o fallidos para el Job/Grupo", i))
-    next
-  }
-  
-  summary <- group_data %>%
-    group_by(D) %>%
-    summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop")
-  
-  new_summary<-summary[2:62,] # Filtrar los datos como lo haces
-  
-  # ----------------------------------------------------
-  # PASO CLAVE: Encontrar y Guardar el Máximo
-  # ----------------------------------------------------
-  max_ll_index <- which.max(new_summary$LL_sum)
-  max_D <- new_summary$D[max_ll_index]
-  max_LL <- new_summary$LL_sum[max_ll_index]
-  
-  # Almacenar el resultado en la lista
-  max_results[[i]] <- data.frame(
-    Job = i,
-    D_max = max_D,
-    LL_max = max_LL
-  )
-  
-  # --- El código para graficar el LL vs D individual (que ya tenías)
-  # file_name <- paste0(output_dir,"ll_job_",i,".png")
-  # png(filename = file_name, width = 730, height = 400)
-  # ... (resto del código de plot individual)
-  # dev.off()
-}
-
-# ----------------------------------------------------
-# PASO FINAL: Combinar los resultados en un único data frame
-# ----------------------------------------------------
-final_max_df <- do.call(rbind, max_results)
-print(head(final_max_df)) # Muestra los primeros resultados
-
-library(ggplot2)
-
-# Crear el gráfico de densidad de los 50 puntos (D_max y LL_max)
-p <- ggplot(final_max_df, aes(x = D_max, y = LL_max)) +
-  
-  # Añadir puntos de dispersión
-  geom_point(alpha = 0.7, # Transparencia para ver superposición
-             size = 3,
-             color = "black") +
-  
-  # Opcional pero recomendado para ver dónde caen los puntos: Añadir una capa de densidad 2D
-  stat_density_2d(aes(fill = after_stat(level)), 
-                  geom = "polygon",
-                  alpha = 0.3,
-                  show.legend = FALSE) +
-  scale_fill_gradientn(colors = c("lightblue", "yellow", "red")) + # Escala de color para la densidad
-  
-  # Etiquetas y Títulos
-  labs(title = "Distribución de los Parámetros Óptimos (D vs. LL) en 50 Grupos",
-       subtitle = paste0("Máxima Verosimilitud Compuesta (LL) en función del Parámetro D."),
-       x = "Parámetro D de Máxima Verosimilitud (D_max)",
-       y = "Máxima Verosimilitud Compuesta (LL_max)") +
-  
-  # Tema limpio
-  theme_minimal() +
-  
-  # Ajustar límites del eje X si quieres que vaya de 0 a 30 (como mencionaste)
-  xlim(0, 30)
-
-# Mostrar el gráfico
-print(p)
-
-# Opcional: Guardar el gráfico final
-ggsave(paste0(output_dir, "distribucion_maximos_50_grupos.png"), 
-       plot = p, width = 10, height = 6)
-# ----------------------------------------------------
-# SIN JOB ID
-# ----------------------------------------------------
-library(dplyr) 
-library(tidyverse)
-
-output_dir <- "/Users/alessandrohernandez/Documents/Posgrado/Doctorado/Discrete/output"
-
-# Parámetros
-group_size <- 1
-N <- 7
-pattern_to_search <- "^SelectionDiffusion_Analysis_.*\\.txt$"
-path_to_files <- "/Users/alessandrohernandez/Documents/Posgrado/Doctorado/Discrete/LL/Selection"
-
-# 1. Listar y barajar archivos
-file_list <- list.files(
-  path = path_to_files,
+  path = input_dir,
   pattern = pattern_to_search,
   full.names = TRUE
 )
 
-if (length(file_list) < group_size * N) {
-  stop("No hay suficientes archivos para formar ", N, " grupos de ", group_size, " archivos.")
+num_files <- length(file_list)
+print(paste("Found", num_files, "files matching the Task Group."))
+
+# --- LÓGICA DE GRUPOS ---
+TARGET_GROUPS <- 50
+
+# 1. Definimos cuántos grupos haremos realmente
+if (num_files < TARGET_GROUPS) {
+    print(paste("ADVERTENCIA: Solo hay", num_files, "archivos. Se reduce el número de grupos."))
+    actual_groups <- num_files
+} else {
+    actual_groups <- TARGET_GROUPS
 }
 
-set.seed(123)
+# 2. Validación de seguridad
+if (actual_groups == 0) {
+    stop("No se encontraron archivos para procesar.")
+}
+
+# 3. Barajar y Dividir
+# CORRECCIÓN: No podemos usar task_id_reg como entero para la seed.
+# Usamos el valor de migración (convertido a factor numérico) o una seed fija.
+set.seed(12345) 
+
 shuffled_files <- sample(file_list)
 
-# 2. Dividir en N grupos de tamaño fijo
-file_groups <- split(shuffled_files[1:(group_size * N)], rep(1:N, each = group_size))
+group_indices <- cut(seq_along(shuffled_files), breaks = actual_groups, labels = FALSE)
+file_groups <- split(shuffled_files, group_indices)
 
-# 3. Procesar cada grupo
-group_summaries <- lapply(seq_along(file_groups), function(i) {
-  files <- file_groups[[i]]
-  group_name <- paste0("Grupo ", i)
+print(paste("Generados", length(file_groups), "grupos Composite."))
+print(paste("Promedio archivos por grupo:", round(mean(sapply(file_groups, length)), 1)))
+
+# ==========================================
+# 3. Data Processing (Composite Likelihood)
+# ==========================================
+
+process_group <- function(files, group_idx) {
+  group_name <- paste("Group", group_idx)
   
-  data <- do.call(rbind, lapply(files, function(f) {
-    tryCatch(read.table(f, header = TRUE), error = function(e) {
-      warning(paste("Error leyendo archivo:", f, e$message))
+  # Read all files in the group
+  raw_data_list <- lapply(files, function(f) {
+    tryCatch({
+      d <- read.table(f, header = TRUE)
+      return(d)
+    }, error = function(e) {
+      warning(paste("Error reading:", f))
       return(NULL)
     })
-  }))
+  })
   
-  if (is.null(data)) return(NULL)
+  # Combine
+  full_data <- bind_rows(raw_data_list)
+  if(nrow(full_data) == 0) return(NULL)
   
-  summary <- data %>%
-    group_by(s) %>%
+  # COMPOSITE LIKELIHOOD CALCULATION
+  # Sum Log-Likelihoods (LL) for each combination of parameters (D and s)
+  composite_surface <- full_data %>%
+    group_by(D, s) %>%
     summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop") %>%
     mutate(Group = group_name)
   
-  return(summary)
-})
+  return(composite_surface)
+}
 
-# 4. Combinar y graficar
-
+print("Calculating Composite Likelihoods...")
+group_summaries <- lapply(seq_along(file_groups), function(i) process_group(file_groups[[i]], i))
 combined_data <- bind_rows(group_summaries)
-max_points <- combined_data %>%
+
+if(nrow(combined_data) == 0) stop("No valid data could be loaded.")
+
+# ==========================================
+# 4. Profile Likelihood Extraction
+# ==========================================
+
+profile_D <- combined_data %>%
+  group_by(Group, D) %>%
+  summarise(
+    Profile_LL = max(LL_sum),      # Best LL for this D (optimizing s)
+    Best_s = s[which.max(LL_sum)], # The s value associated with that max
+    .groups = "drop"
+  )
+
+# Find global maximum points (MLE) per group
+max_points <- profile_D %>%
   group_by(Group) %>%
-  filter(LL_sum == max(LL_sum)) %>%
+  filter(Profile_LL == max(Profile_LL)) %>%
   ungroup()
 
+# ==========================================
+# 5. Plotting (English Titles)
+# ==========================================
 
-ggplot(combined_data, aes(x = D, y = LL_sum, fill = Group)) +
-  geom_line() +
-  labs(title = "Comparación de LL por grupo", x = "D", y = "Suma de LL") +
-  theme_minimal()
-
-# --- DEFINE VALOR ---
-valor_teorico <- 0.01 
-ggplot(max_points, aes(x = "Inferencia", y = s)) +
-  geom_violin(fill = "grey90", color = "grey40", draw_quantiles = c(0.5)) + # Línea central es mediana
-  # 2. Puntos (Jitter)
-  geom_jitter(width = 0.15, alpha = 0.3, color = "#2c7bb6", size = 1.0) +
-  # 3. Boxplot Angosto (Resumen estadístico robusto)
-  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA, alpha = 0.5) +
-  # 4. Línea Roja Teórica
-  geom_hline(yintercept = valor_teorico, linetype = "dashed", color = "#d7191c", size = 1) +
+# A. Profile Likelihood Curve for D (Line Plot)
+p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
+  geom_line(size = 0.8, alpha = 0.8) +
+  geom_point(data = max_points, aes(x = D, y = Profile_LL), 
+             size = 3, shape = 21, fill = "white", stroke = 1.5) +
   labs(
-    title = "Inferencia del Coeficiente de Difusión",
-    subtitle = bquote(paste("Valor esperado de ", italic(s), " = ", .(valor_teorico))),
-    y = expression(paste("D estimado (", m^2, "/gen)")) # Notación matemática en el eje
+    title = "Composite Likelihood Profile (Diffusion)",
+    # CORRECCIÓN: Usamos m_value en el título, no el regex feo
+    subtitle = paste0("Migration Rate (m): ", m_value, " | Groups: ", actual_groups),
+    x = expression(paste("Diffusion Coefficient D (", m^2, "/gen)")),
+    y = "Sum of Log-Likelihood",
+    color = "Subset Group"
   ) +
-  theme_bw() + # Tema blanco y negro, muy limpio
-  theme(
-    panel.grid.major.x = element_blank(),
-    axis.title.x = element_blank(),
-    text = element_text(family = "sans", size = 12)
-  )
-
-ggplot(combined_data, aes(x = D, y = LL_sum, color = Group, group = Group)) +
- # geom_line(size = 1) +
-  geom_point(data = max_points, aes(x = D, y = LL_sum), size = 3, shape = 21, fill = "white", stroke = 1.5) +
-  labs(title = "LL por grupo con máximos destacados", x = "D", y = "Suma de LL") +
-  theme_minimal()
-
-ggplot(max_points, aes(x = "", y = D)) +
-  geom_violin(fill = "skyblue", color = "darkblue") +           # Violin
-  geom_jitter(width = 0.1, alpha = 0.5, color = "red") +       # Puntos individuales
-  stat_summary(fun = median, geom = "point", color = "black", size = 3) +  # Mediana
-  stat_summary(fun.data = function(x) {
-    data.frame(
-      y = mean(x),
-      ymin = quantile(x, 0.25),
-      ymax = quantile(x, 0.75)
-    )
-  }, geom = "errorbar", width = 0.1, color = "darkgreen") +   # Cuartiles y media
-  labs(
-    title = "Distribución de D con media y cuartiles (m=0.0005",
-    x = "",
-    y = "Valor de D"
-  ) +
-  theme_minimal()
-
-ggplot(combined_data, aes(x = D)) +
-  geom_density(fill = "lightblue", alpha = 0.5) +
-  labs(title = "Densidad de valores de D", x = "D", y = "Densidad") +
-  theme_minimal()
-
-#############
-###SELECCION
-##########
-# -------------------------------------------------------------------------
-# 1. CARGA DE LIBRERÍAS Y CONFIGURACIÓN
-# -------------------------------------------------------------------------
-library(tidyverse) # Necesario para map_dfr, ggplot, pipes, etc.
-
-# Valores verdaderos a inferir
-true_D <- 0.01
-true_s <- 0.01
-
-# -------------------------------------------------------------------------
-# 2. LECTURA DE ARCHIVOS (Tu código integrado)
-# -------------------------------------------------------------------------
-pattern_to_search <- "^SelectionDiffusion_Analysis_.*\\.txt$"
-path_to_files <- "/Users/alessandrohernandez/Documents/Posgrado/Doctorado/Discrete/LL/Selection"
-
-file_list <- list.files(
-  path = path_to_files,
-  pattern = pattern_to_search,
-  full.names = TRUE
-)
-
-# Verificación de seguridad: ¿Encontró archivos?
-if(length(file_list) == 0) {
-  stop("No se encontraron archivos. Verifica la ruta o el patrón de búsqueda.")
-} else {
-  message(paste("Se encontraron", length(file_list), "archivos para procesar."))
-}
-
-# -------------------------------------------------------------------------
-# 3. EXTRACCIÓN DEL MEJOR VALOR (MLE) DE CADA ARCHIVO
-# -------------------------------------------------------------------------
-
-# Esta función lee un archivo y devuelve solo la fila con el mejor Log-Likelihood
-process_file <- function(filepath) {
-  # Leer el archivo (asumiendo separador por espacio o tabulador)
-  df <- read.table(filepath, header = TRUE)
-  
-  # Filtrar la fila con el máximo LL
-  best_row <- df %>% 
-    filter(LL == max(LL)) %>% 
-    # Si hay empates en el máximo, tomamos el primero para evitar duplicados
-    slice(1) 
-  
-  return(best_row)
-}
-
-# Aplicamos la función a todos los archivos y combinamos en un solo dataframe
-# map_dfr itera sobre la lista y une los resultados en un data.frame automáticamente
-results_df <- map_dfr(file_list, process_file, .id = "File_ID")
-
-# Opcional: ver las primeras filas de los resultados
-head(results_df)
-
-# -------------------------------------------------------------------------
-# 4. VISUALIZACIÓN (BOXPLOT DE DISPERSIÓN)
-# -------------------------------------------------------------------------
-
-# Transformamos los datos a formato largo para graficar D y s juntos
-plot_data <- results_df %>%
-  select(D, s) %>% # Seleccionamos solo las columnas de interés
-  pivot_longer(cols = c("D", "s"), names_to = "Parametro", values_to = "Valor_Inferido")
-
-# Generar el gráfico
-p <- ggplot(plot_data, aes(x = Parametro, y = Valor_Inferido, fill = Parametro)) +
-  # 1. Boxplot para ver la distribución (mediana y cuartiles)
-  geom_boxplot(alpha = 0.6, outlier.shape = NA) +
-  
-  # 2. Jitter para ver cada archivo individualmente (puntos dispersos)
-  geom_jitter(width = 0.2, alpha = 0.4, size = 2, color = "#2c3e50") +
-  
-  # 3. Línea roja indicando el VALOR VERDADERO (0.01)
-  geom_hline(yintercept = true_D, color = "red", linetype = "dashed", linewidth = 1) +
-  
-  # 4. Facetas: Separa los gráficos si las escalas son muy diferentes
-  # "scales = free" permite que el eje Y se ajuste independientemente para D y s
-  facet_wrap(~Parametro, scales = "free") + 
-  
-  # Estética
-  scale_fill_manual(values = c("D" = "#3498db", "s" = "#e67e22")) +
-  theme_bw() +
-  labs(
-    title = paste("Dispersión de la inferencia en", length(file_list), "archivos simulados"),
-    subtitle = "La línea roja discontinua indica el valor verdadero (0.01)",
-    y = "Valor Estimado (MLE)",
-    x = "Parámetro"
-  ) +
-  theme(legend.position = "none") # Ocultar leyenda redundante
-
-print(p)
-
-
-dev.off()
-
-# Inicializar una lista para guardar los resultados máximos de cada Job/Grupo
-max_results <- list() 
-output_dir <- "/Users/miel_/Documents/Doctorado/output/"
-
-for (i in 1:50){
-  
-  group_results <- list()
-  pattern_to_search <- paste0("^SelectionDiffusion_Analysis_.*_Job_",i,"\\.txt$")
-  
-  file_list <- list.files(
-    path = "/Users/miel_/Documents/Doctorado/LL",
-    pattern = pattern_to_search,
-    full.names = TRUE
-  )
-  
-  if (length(file_list) == 0) {
-    print(paste("ADVERTENCIA: No se encontraron archivos para el Job/Grupo", i))
-    next # Pasar a la siguiente iteración si no hay archivos
-  }
-  
-  group_data <- do.call(rbind, lapply(file_list, function(f) {
-    df <- tryCatch(read.table(f, header = TRUE), error = function(e) {
-      warning(paste("Error leyendo archivo:", f, e$message))
-      return(NULL)
-    })
-    return(df)
-  }))
-  
-  if (is.null(group_data) || nrow(group_data) == 0) {
-    print(paste("ADVERTENCIA: Datos vacíos o fallidos para el Job/Grupo", i))
-    next
-  }
-  
-  summary <- group_data %>%
-    group_by(D) %>%
-    summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop")
-  
-  new_summary<-summary[2:62,] # Filtrar los datos como lo haces
-  
-  # ----------------------------------------------------
-  # PASO CLAVE: Encontrar y Guardar el Máximo
-  # ----------------------------------------------------
-  max_ll_index <- which.max(new_summary$LL_sum)
-  max_D <- new_summary$D[max_ll_index]
-  max_LL <- new_summary$LL_sum[max_ll_index]
-  
-  # Almacenar el resultado en la lista
-  max_results[[i]] <- data.frame(
-    Job = i,
-    D_max = max_D,
-    LL_max = max_LL
-  )
-  
-  # --- El código para graficar el LL vs D individual (que ya tenías)
-  # file_name <- paste0(output_dir,"ll_job_",i,".png")
-  # png(filename = file_name, width = 730, height = 400)
-  # ... (resto del código de plot individual)
-  # dev.off()
-}
-
-# ----------------------------------------------------
-# PASO FINAL: Combinar los resultados en un único data frame
-# ----------------------------------------------------
-final_max_df <- do.call(rbind, max_results)
-print(head(final_max_df)) # Muestra los primeros resultados
-
-library(ggplot2)
-
-# Crear el gráfico de densidad de los 50 puntos (D_max y LL_max)
-p <- ggplot(final_max_df, aes(x = D_max, y = LL_max)) +
-  
-  # Añadir puntos de dispersión
-  geom_point(alpha = 0.7, # Transparencia para ver superposición
-             size = 3,
-             color = "black") +
-  
-  # Opcional pero recomendado para ver dónde caen los puntos: Añadir una capa de densidad 2D
-  stat_density_2d(aes(fill = after_stat(level)), 
-                  geom = "polygon",
-                  alpha = 0.3,
-                  show.legend = FALSE) +
-  scale_fill_gradientn(colors = c("lightblue", "yellow", "red")) + # Escala de color para la densidad
-  
-  # Etiquetas y Títulos
-  labs(title = "Distribución de los Parámetros Óptimos (D vs. LL) en 50 Grupos",
-       subtitle = paste0("Máxima Verosimilitud Compuesta (LL) en función del Parámetro D."),
-       x = "Parámetro D de Máxima Verosimilitud (D_max)",
-       y = "Máxima Verosimilitud Compuesta (LL_max)") +
-  
-  # Tema limpio
   theme_minimal() +
-  
-  # Ajustar límites del eje X si quieres que vaya de 0 a 30 (como mencionaste)
-  xlim(0, 30)
+  theme(legend.position = "none") # Ocultamos leyenda si son 50 grupos (mucho ruido)
 
-# Mostrar el gráfico
-print(p)
+# B. Distribution of Estimated D (Violin/Boxplot)
+p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
+  geom_violin(fill = "grey95", color = "grey60", draw_quantiles = 0.5) +
+  geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
+  geom_jitter(width = 0.05, height = 0, color = "#2c7bb6", size = 2, alpha = 0.7) +
+  labs(
+    title = "Variance of D Estimation",
+    # CORRECCIÓN: Usamos actual_groups en el subtítulo
+    subtitle = paste0("Distribution of Maxima across ", actual_groups, " random Composite groups"),
+    x = "",
+    y = "Estimated D"
+  ) +
+  theme_bw() +
+  theme(
+    axis.ticks.x = element_blank(),
+    panel.grid.major.x = element_blank()
+  )
 
-# Opcional: Guardar el gráfico final
-ggsave(paste0(output_dir, "distribucion_maximos_50_grupos.png"), 
-       plot = p, width = 10, height = 6)
+# ==========================================
+# 6. Saving Outputs
+# ==========================================
 
+# CORRECCIÓN: Limpieza del nombre de archivo.
+# No podemos usar el regex con barras '|' en el nombre del archivo.
+# Usamos el valor de migración para nombrar el archivo limpiamente.
+clean_filename <- paste0(prefix, "_Composite_Mig_", m_value)
 
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Profile.png")), 
+       plot = p1, width = 8, height = 6)
+
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Distribution.png")), 
+       plot = p2, width = 6, height = 6)
+
+print(paste("Plots saved successfully in:", output_dir))
