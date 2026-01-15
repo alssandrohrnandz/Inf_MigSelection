@@ -1,7 +1,7 @@
 initialize() {
 	//initializeSex("A"); 
-	defineConstant("SubpopSize", 1000);
-	if (!exists("MIG")) //TODO: Valores a experimentar de migración, 0.1 0.01, 0.001, 0.0001, 0.00001
+	defineConstant("SubpopSize", 500);
+	if (!exists("MIG")) 
 		defineConstant("MIG",0.05);
 	defineConstant("Migration", MIG);
 	defineConstant("pop", 10);
@@ -12,9 +12,9 @@ initialize() {
 	defineConstant("MU", 1.2e-8);
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.05); //TODO: Por ahora este cambio 
+	initializeMutationType("m2", 0.5, "f", 0.01); 
 	
-	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); //TODO: Por ahora este cambio
+	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); 
 	
 	rec_ends = NULL;
 	rec_rates = NULL;
@@ -110,22 +110,22 @@ initialize() {
 	muts_m1 = sim.mutationsOfType(m1);
 	if (size(muts_m1) > 0) {
 		lines_m1 = "";
-		chr_tot = 2 * size(subpop.individuals);
 		for (m in muts_m1) {
 			for (subpop in sim.subpopulations) {
 				freq = sim.mutationFrequencies(subpop, m);
 					//if (freq > 0) {
-						allele_count = asInteger(round(freq * chr_tot));
-						index = subpop.id - 1;
-						x_pos = (index % n) + 1;
-						y_pos = asInteger(index / n) + 1;
-						line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-						lines_m1 = c(lines_m1, line);
+					chr_tot = 2 * size(subpop.individuals);
+					allele_count = asInteger(round(freq * chr_tot));
+					index = subpop.id - 1;
+					x_pos = (index % n) + 1;
+					y_pos = asInteger(index / n) + 1;
+					line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+					lines_m1 = c(lines_m1, line);
 					//}
 			}
 		}
 		if (length(lines_m1) > 0)
-			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_test_" + id_replica + ".csv", //TODO: Quitar test
+			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv", 
 			paste(lines_m1, sep="\n"), append=T);
 	}
 }
