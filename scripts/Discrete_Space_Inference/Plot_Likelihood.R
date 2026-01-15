@@ -8,7 +8,9 @@ suppressPackageStartupMessages({
   library(ggplot2)
 })
 
-# 
+# ==========================================
+# 1. Argument Parsing
+# ==========================================
 args <- commandArgs(trailingOnly = TRUE)
 
 if(length(args) < 4) {
@@ -17,18 +19,22 @@ if(length(args) < 4) {
 
 input_dir   <- args[1]
 output_dir  <- args[2]
-task_id_reg <- args[3] # Ahora esto es un REGEX: "(1|2|...|50)"
-m_value     <- args[4] 
+task_id_reg <- args[3]
+# CORRECCIÓN: Convertir a numérico inmediatamente para evitar errores matemáticos posteriores
+m_value     <- as.numeric(args[4]) 
 prefix      <- if(!is.na(args[5])) args[5] else "Analysis" 
 
 print(paste("Migration Rate (m):", m_value))
 print("Regex Pattern loaded for file search.")
+print(paste("Guardar en: ", output_dir))
 
-#==
+# ==========================================
+# 2. File Discovery & Grouping
+# ==========================================
 
-# Pattern: Matches strictly the current prefix and the group of task_ids
 pattern_to_search <- paste0("^", prefix, ".*_", task_id_reg, "_SNP_.*\\.txt$")
 
+# substr solo para el print, para no saturar la consola
 print(paste("Searching pattern:", substr(pattern_to_search, 1, 50), "..."))
 
 file_list <- list.files(
@@ -43,7 +49,6 @@ print(paste("Found", num_files, "files matching the Task Group."))
 # --- LÓGICA DE GRUPOS ---
 TARGET_GROUPS <- 50
 
-# 1. Definimos cuántos grupos haremos realmente
 if (num_files < TARGET_GROUPS) {
     print(paste("ADVERTENCIA: Solo hay", num_files, "archivos. Se reduce el número de grupos."))
     actual_groups <- num_files
@@ -51,30 +56,28 @@ if (num_files < TARGET_GROUPS) {
     actual_groups <- TARGET_GROUPS
 }
 
-# 2. Validación de seguridad
 if (actual_groups == 0) {
     stop("No se encontraron archivos para procesar.")
 }
 
 # 3. Barajar y Dividir
-# CORRECCIÓN: No podemos usar task_id_reg como entero para la seed.
-# Usamos el valor de migración (convertido a factor numérico) o una seed fija.
 set.seed(12345) 
 
 shuffled_files <- sample(file_list)
-
 group_indices <- cut(seq_along(shuffled_files), breaks = actual_groups, labels = FALSE)
 file_groups <- split(shuffled_files, group_indices)
 
 print(paste("Generados", length(file_groups), "grupos Composite."))
 print(paste("Promedio archivos por grupo:", round(mean(sapply(file_groups, length)), 1)))
 
-# 
+# ==========================================
+# 3. Processing
+# ==========================================
 
 process_group <- function(files, group_idx) {
   group_name <- paste("Group", group_idx)
   
-  # Read all files in the group
+  # Read all files
   raw_data_list <- lapply(files, function(f) {
     tryCatch({
       d <- read.table(f, header = TRUE)
@@ -85,12 +88,10 @@ process_group <- function(files, group_idx) {
     })
   })
   
-  # Combine
   full_data <- bind_rows(raw_data_list)
   if(nrow(full_data) == 0) return(NULL)
   
   # COMPOSITE LIKELIHOOD CALCULATION
-  # Sum Log-Likelihoods (LL) for each combination of parameters (D and s)
   composite_surface <- full_data %>%
     group_by(D, s) %>%
     summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop") %>%
@@ -105,81 +106,138 @@ combined_data <- bind_rows(group_summaries)
 
 if(nrow(combined_data) == 0) stop("No valid data could be loaded.")
 
-# 
+# ==========================================
+# 4. Profile Likelihood Extraction
+# ==========================================
 
-profile_D <- combined_data %>%
+profile_LL <- combined_data %>%
   group_by(Group, D) %>%
   summarise(
-    Profile_LL = max(LL_sum),      # Best LL for this D (optimizing s)
-    Best_D = s[which.max(LL_sum)], # The s value associated with that max
+    Profile_LL = max(LL_sum),
+    # OPTIMIZACIÓN: which.max es ligeramente más seguro/rápido
+    Best_s = s[which.max(LL_sum)], 
     .groups = "drop"
   )
 
-# Find global maximum points (MLE) per group
-max_points <- profile_D %>%
+profile_LL <- profile_LL %>%
   group_by(Group) %>%
-  filter(Profile_LL == max(Profile_LL)) %>%
+  mutate(delta_LL = Profile_LL - max(Profile_LL)) %>%
   ungroup()
 
-# 
-head(profile_D,15)
-head(max_points,20)
+# Find global maximum points (MLE) per group
+max_points <- profile_LL %>%
+  group_by(Group) %>%
+  slice_max(Profile_LL, n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+median_D <- median(max_points$D, na.rm = TRUE)
+
+# Debug prints
+head(profile_LL, 15)
+head(max_points, 20)
+
+# Statistics for Caption
+bias_median_log <- median(log10(max_points$D), na.rm = TRUE) - log10(m_value)
+rmse_log  <- sqrt(mean((log10(max_points$D) - log10(m_value))^2))
+
+bias_rmse_text <- paste0(
+  "Bias (log10) = ", round(bias_median_log, 3),
+  " | RMSE (log10) = ", round(rmse_log, 3)
+)
+
+# ==========================================
+# 5. Plotting
+# ==========================================
 
 # A. Profile Likelihood Curve for D (Line Plot)
-p1 <- ggplot(profile_D, aes(x = D, y = Profile_LL, color = Group)) +
-  geom_line(size = 0.8, alpha = 0.8) +
-  geom_point(data = max_points, aes(x = D), y = Profile_LL), 
-             size = 3, shape = 21, fill = "white", stroke = 1.5) +
-  scale_x_log10()+           
+p1 <- ggplot(profile_LL, aes(x = D, y = Profile_LL, color = Group)) +
+  geom_line(linewidth = 0.8, alpha = 0.8) + # linewidth actualizado
+  geom_point(
+    data = max_points,
+    aes(x = D, y = Profile_LL),
+    size = 3, shape = 21, fill = "white", stroke = 1.5
+  ) +
+  scale_x_log10() +          
   labs(
     title = "Composite Likelihood Profile (Diffusion)",
-    # CORRECCIÓN: Usamos m_value en el título, no el regex feo
     subtitle = paste0("Migration Rate (m): ", m_value, " | Groups: ", actual_groups),
     x = expression(paste("Diffusion Coefficient D (", m^2, "/gen)")),
     y = "Sum of Log-Likelihood",
     color = "Subset Group"
   ) +
   theme_minimal() +
-  theme(legend.position = "none") # Ocultamos leyenda si son 50 grupos (mucho ruido)
+  theme(legend.position = "none") 
 
 # B. Distribution of Estimated D (Violin/Boxplot)
-teoric_value_num <- as.numeric(teoric_value)
-
 p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) + 
-  
-  # 1. Geometrías (Datos crudos)
   geom_violin(fill = "grey95", color = "grey60") +
   geom_boxplot(width = 0.1, fill = "white", color = "black", outlier.shape = NA) +
   geom_jitter(width = 0.05, height = 0, color = "#2c7bb6", size = 2, alpha = 0.7) +
   
-  # 2. Línea Teórica (Usamos el valor ORIGINAL: 0.00001)
-  # ggplot se encargará de ponerla en la posición logarítmica correcta (-5)
-  geom_hline(yintercept = teoric_value_num, linetype = "dashed", color = "#d7191c", linewidth = 1) +
-  
-  # 3. LA SOLUCIÓN MÁGICA: Escala Logarítmica en el Eje Y
-  scale_y_log10(
-    # Cortes manuales para que se vean bonitos en tu rango
-    breaks = c(1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 0.5, 1),
-    # Etiquetas en formato científico (10^-5)
-    labels = trans_format("log10", math_format(10^.x))
+  # Líneas horizontales con mapping para leyenda
+  geom_hline(
+    aes(yintercept = median_D, color = "Median value", linetype = "Median value"),
+    linewidth = 1
   ) +
-  annotation_logticks(sides = "l") + # Rayitas de logaritmo a la izquierda
+  geom_hline(
+    aes(yintercept = m_value, color = "Theoric value", linetype = "Theoric value"),
+    linewidth = 1
+  ) +
   
-  # 4. Etiquetas
+  scale_y_log10(
+    breaks = c(1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 0.5, 1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
+  ) +
+  
+  annotation_logticks(sides = "l") +
+  
+  # --- CORRECCIÓN DE LA LEYENDA ---
+  # Definimos 'breaks' para asegurar el orden exacto de las etiquetas
+  scale_color_manual(
+    name = "",
+    breaks = c("Theoric value", "Median value"), # Orden forzado
+    values = c(
+      "Theoric value" = "#d7191c",
+      "Median value"  = "blue"
+    ),
+    labels = c(
+      paste0("Theoric value = ", m_value),
+      paste0("Median value = ", format(median_D, scientific = FALSE, digits = 3))
+    )
+  ) +
+  
+  scale_linetype_manual(
+    name = "",
+    breaks = c("Theoric value", "Median value"), # Orden forzado
+    values = c(
+      "Theoric value" = "dashed",
+      "Median value"  = "dotted"
+    ),
+    labels = c(
+      paste0("Theoric value = ", m_value),
+      paste0("Median value = ", format(median_D, scientific = FALSE, digits = 3))
+    )
+  ) +
+  
   labs(
     title = "Variance of D Estimation",
     subtitle = paste0("Distribution of Maxima across ", actual_groups, " random Composite groups"),
     x = "",
-    y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale"))
+    y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale")),
+    caption = bias_rmse_text
   ) +
   theme_bw() +
   theme(
     axis.ticks.x = element_blank(),
     panel.grid.major.x = element_blank(),
-    panel.grid.minor.y = element_blank()
+    panel.grid.minor.y = element_blank(),
+    legend.position = "bottom" # Mover leyenda abajo para mejor lectura
   )
 
-# Usamos el valor de migración para nombrar el archivo limpiamente.
+# ==========================================
+# 6. Saving
+# ==========================================
+
 clean_filename <- paste0(prefix, "_Composite_Mig_", m_value)
 
 ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Profile.png")), 
