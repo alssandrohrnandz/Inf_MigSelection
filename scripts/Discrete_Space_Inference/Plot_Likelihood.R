@@ -137,17 +137,17 @@ head(profile_LL, 15)
 head(max_points, 20)
 
 # Statistics for Caption
-bias_median_log <- median(log10(max_points$D), na.rm = TRUE) - log10(m_value)
-rmse_log  <- sqrt(mean((log10(max_points$D) - log10(m_value))^2))
+
+
+bias_median_log <- median(max_points$D, na.rm = TRUE) - m_value
+rmse_log  <- sqrt(mean((max_points$D - m_value)^2))
 
 bias_rmse_text <- paste0(
-  "Bias (log10) = ", round(bias_median_log, 3),
-  " | RMSE (log10) = ", round(rmse_log, 3)
+  "Bias = ", round(bias_median_log, 3),
+  " | RMSE = ", round(rmse_log, 3)
 )
 
-# ==========================================
-# 5. Plotting
-# ==========================================
+
 
 # A. Profile Likelihood Curve for D (Line Plot)
 p1 <- ggplot(profile_LL, aes(x = D, y = Profile_LL, color = Group)) +
@@ -221,7 +221,7 @@ p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
   
   labs(
     title = "Variance of D Estimation",
-    subtitle = paste0("Distribution of Maxima across ", actual_groups, " random Composite groups"),
+    subtitle = paste0("Distribution of LL across ", actual_groups, " random Composite groups (2Ne=1000)"),
     x = "",
     y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale")),
     caption = bias_rmse_text
