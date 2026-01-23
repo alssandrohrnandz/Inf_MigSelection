@@ -18,7 +18,7 @@ initialize() {
 	
 	rec_ends = NULL;
 	rec_rates = NULL;
-	for (index in 1:20) {
+	for (index in 1:10) {
 		start = (index - 1)*100;
 		end = start + 99;
 		initializeGenomicElement(g1, start, end);
@@ -76,13 +76,13 @@ initialize() {
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));
 	//Sin aDNA
-	//if (length(lines_aDNA_m1) > 0)
-	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-	//	paste(lines_aDNA_m1, sep="\n"), append=T);
+	if (length(lines_aDNA_m1) > 0)
+		writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
+		paste(lines_aDNA_m1, sep="\n"), append=T);
 	
-	//if (length(lines_aDNA_m2) > 0)
-	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-	//	paste(lines_aDNA_m2, sep="\n"), append=T);
+	if (length(lines_aDNA_m2) > 0)
+		writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
+		paste(lines_aDNA_m2, sep="\n"), append=T);
 	
 	// --- M2 FULL ---
 	muts_m2 = sim.mutationsOfType(m2);
