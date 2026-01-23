@@ -4,7 +4,6 @@ library(dplyr)
 library(tidyverse)
 library(VGAM)
 
-#TODO: GENERAR EL ANALISIS PARA TODOS LOS SNP de una simulación.
 args <- commandArgs(trailingOnly = TRUE)
 freq_file   <- args[1]
 subset_file <- args[2]
