@@ -13,6 +13,7 @@
 module load r/4.1.3
 module load slim/5.1
 
+#TODO: GUARDAR LOS ANÁLISIS DE SLIM (CSV) PARA POSTERIORMENTE ANALIZARLOS EN ZIP
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
 REPLICAS_PER_VAL=50
@@ -86,9 +87,9 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m2"
-        "D_FULL_neutros_m1" #TODO:Quitar
-        #"D_aDNA_scattered_neutros_m1"
-        #"D_aDNA_scattered_seleccion_m2"
+        "D_FULL_neutros_m1" 
+        "D_aDNA_scattered_neutros_m1"
+        "D_aDNA_scattered_seleccion_m2"
     )
     FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
 
