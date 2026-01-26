@@ -221,7 +221,7 @@ p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
   
   labs(
     title = "Variance of D Estimation",
-    subtitle = paste0("Distribution of LL across ", actual_groups, " random Composite groups (2Ne=1000)"),
+    subtitle = paste0("Distribution of LL across ", actual_groups, " random Composite groups (2Ne=1000)"), #TODO: Modificar 500 o 1000
     x = "",
     y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale")),
     caption = bias_rmse_text
@@ -238,7 +238,7 @@ p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
 # 6. Saving
 # ==========================================
 
-clean_filename <- paste0(prefix, "_Composite_Mig_", m_value)
+clean_filename <- paste0(prefix, "_Composite_N1000_Mig_", m_value) #Editar a 500 o 100
 
 ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Profile.png")), 
        plot = p1, width = 8, height = 6)
