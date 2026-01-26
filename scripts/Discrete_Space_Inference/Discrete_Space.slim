@@ -1,6 +1,6 @@
 initialize() {
 	//initializeSex("A"); 
-	defineConstant("SubpopSize", 500);
+	defineConstant("SubpopSize", 1000);
 	if (!exists("MIG")) 
 		defineConstant("MIG",0.05);
 	defineConstant("Migration", MIG);
@@ -76,13 +76,13 @@ initialize() {
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));
 	//Sin aDNA
-	if (length(lines_aDNA_m1) > 0)
-		writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-		paste(lines_aDNA_m1, sep="\n"), append=T);
+	//if (length(lines_aDNA_m1) > 0)
+	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
+	//	paste(lines_aDNA_m1, sep="\n"), append=T);
 	
-	if (length(lines_aDNA_m2) > 0)
-		writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-		paste(lines_aDNA_m2, sep="\n"), append=T);
+	//if (length(lines_aDNA_m2) > 0)
+	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
+	//	paste(lines_aDNA_m2, sep="\n"), append=T);
 	
 	// --- M2 FULL ---
 	muts_m2 = sim.mutationsOfType(m2);
@@ -101,7 +101,7 @@ initialize() {
 				lines_m2 = c(lines_m2, line);
 			}
 		}
-		if (length(lines_m2) > 0)
+		if (length(lines_m2) > 0) 
 			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
 			paste(lines_m2, sep="\n"), append=T);
 	}
@@ -124,7 +124,7 @@ initialize() {
 					//}
 			}
 		}
-		if (length(lines_m1) > 0)
+		if (length(lines_m1) > 0) 
 			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv", 
 			paste(lines_m1, sep="\n"), append=T);
 	}
