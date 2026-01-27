@@ -24,7 +24,7 @@ initialize() {
 	rec_rates = NULL;
 	
 	// Construimos 20 fragmentos de 1000bp con recombinación libre entre ellos
-	for (index in 1:20) {
+	for (index in 1:10) {
 		start = (index - 1)*1000;
 		end = start + 999;
 		initializeGenomicElement(g1, start, end);
