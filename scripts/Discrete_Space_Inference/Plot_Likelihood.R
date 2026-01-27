@@ -238,7 +238,7 @@ p2 <- ggplot(max_points, aes(x = "MLE Estimate", y = D)) +
 # 6. Saving
 # ==========================================
 
-clean_filename <- paste0(prefix, "_Composite_N1000_Mig_", m_value) #Editar a 500 o 100
+clean_filename <- paste0(prefix, "_Composite_N1000_Mig_", m_value) #TODO:Editar a 500 o 100
 
 ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Profile.png")), 
        plot = p1, width = 8, height = 6)
