@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-250                # 5 valores migración * 50 réplicas = 250
+#SBATCH --array=1-50                # 5 valores migración * 50 réplicas = 250
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -16,7 +16,7 @@ module load slim/5.1
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
-REPLICAS_PER_VAL=50
+REPLICAS_PER_VAL=10
 
 #rm data/results_Discrete/outputs_LL/*.txt
 #rm data/results_Continuous/outputs_LL/*.txt
