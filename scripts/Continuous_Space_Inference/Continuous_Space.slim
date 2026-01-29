@@ -2,10 +2,13 @@ initialize() {
 	initializeSLiMModelType("nonWF"); // A NWF model is simulated under the following conditions
 	initializeSLiMOptions(dimensionality="xy"); //A 2D space modeled
 	defineConstant("S_COEFF", 0.01); // Selection coefficient 
-	if (!exists("MIG")) 
+	if (!exists("MIG"))
 		defineConstant("MIG",0.05); // Under this model, MIG is just a value. It should be between 0 and 1
 	defineConstant("SIGMA", MIG); // Dispersion (SD) <- this should be as (D) in difussion models
 	defineConstant("MU", 1.2e-8);    // A real mutation rate
+	defineConstant("LIFETIME", 2);
+	defineConstant("FECUN", 1 / LIFETIME);
+	defineConstant("MAP_WIDTH",1.0);
 	initializeMutationRate(MU);
 	// Mutations:
 	// m1: Neutral
@@ -32,101 +35,113 @@ initialize() {
 	initializeRecombinationRate(rec_rates, rec_ends);
 	
 	// MODEL'S CONSTANTS
-	defineConstant("K", 2000);      // Capacidad de carga total aprox
-	defineConstant("N", 2000);      // Tamaño inicial
+	defineConstant("K", 10000);      // Capacidad de carga total aprox
+	defineConstant("N", 10000);      // Tamaño inicial
 	defineConstant("GRID_SIZE", 10); // Para la discretización virtual (10x10)
 	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Continuous/outputs_slim/");
 	if (!exists("id_replica"))
-        defineConstant("id_replica", 1);
+		defineConstant("id_replica", 1);
 	
 	// Parámetros de movimiento
 	defineConstant("SD", SIGMA); // Sigma de Dispersión (Natal)
-	defineConstant("SV", 0.01);  // Movimiento adulto
-	defineConstant("SM", 0.01);  // Búsqueda de pareja
+	defineConstant("SV", SIGMA);  // Movimiento adulto
+	defineConstant("SM", SIGMA);  // Búsqueda de pareja
 	//TODO: Experimentar con 0.01 y ver cuáles son los parámetros que infiere
 	//TODO: Experimentar con 0.001 y 0.0001
 	//INPROGRESS: Experimentar con 500 y 1000
-
+	
 	// Interacciones Espaciales
 	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SD*3); // Competencia
-	i1.setInteractionFunction("n", 1.0, SD*3);
+	i1.setInteractionFunction("n", 1.0, SD);
 	
 	initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM*3); // Apareamiento
-	i2.setInteractionFunction("n", 1.0, SM*3);
+	i2.setInteractionFunction("n", 1.0, SM);
 }
 
-1 early() {
+1 first() {
 	sim.addSubpop("p1", N);
-	p1.setSpatialBounds(c(0.0, 0.0, 1.0, 1.0));
-	p1.individuals.setSpatialPosition(p1.pointUniform(N));
+	p1.setSpatialBounds(c(0.0, 0.0, MAP_WIDTH, MAP_WIDTH));
+	p1.individuals.setSpatialPosition(p1.pointUniform(p1.individualCount));
+	catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount);
 	
 	// --- PREPARACIÓN DE ARCHIVOS DE SALIDA ---
 	writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv","Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
 	writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv","Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
-    //writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-
-    //writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	//writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	//writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 }
 
-2: first() {
+first() {
+	if (SV > 0) {
+		p1.deviatePositions(p1.individuals, "reflecting", INF, "n", SV);
+	}
 	i2.evaluate(p1);
 }
 
-early() {
-	// 1. DENSIDAD Y COMPETENCIA
-	i1.evaluate(p1);
-	inds = p1.individuals;
-	competition = i1.totalOfNeighborStrengths(inds);
-	
-	// Regulación de densidad (Fitness Scaling)
-	// Ajustamos para que la población local no explote
-	inds.fitnessScaling = 1.0 / (1.0 + (competition / (K / (GRID_SIZE*GRID_SIZE))));
-	
-	// 2. MOVIMIENTO ADULTO
-	pos = p1.pointDeviated(inds.size(), inds.spatialPosition, "reflecting", 1000, "n", SV);
-	inds.setSpatialPosition(pos);
-	
-	// 3. SELECCIÓN NATURAL (Vía Fecundidad)
-	
-	// Contamos copias de m2 (seleccionada)
-	mut_count = inds.countOfMutationsOfType(m2);
-	
-	// Efecto aditivo: 1 + S * n_copias
-	selection_multiplier = 1.0 + S_COEFF * mut_count;
-	
-	// Tasa base f0=4, ajustada por selección
-	f_w = 4.0 * selection_multiplier;
-	inds.tag = rpois(inds.size(), lambda = f_w);
+reproduction() {
+	mut_count = individual.countOfMutationsOfType(m2); //esto viene de early
+	selection_multiplier = 1.0 + S_COEFF * mut_count; //viene de early
+	// Aplicar selección a la fecundidad base
+	real_fecundity = FECUN * selection_multiplier; // viene de early
+	//rezando a Dios a partir de aqui
+	mate = i2.drawByStrength(individual, 1);
+	if (mate.size()) {
+		children = subpop.addCrossed(individual, mate, count=rpois(1, 2 * real_fecundity));
+		
+		for (child in children) {
+			pos = individual.spatialPosition + rnorm(2, 0, SD);
+			child.setSpatialPosition(p1.pointReflected(pos));
+		}
+	}
 }
 
-// REPRODUCCIÓN (La dispersión genética ocurre aquí)
-reproduction() {
-	mate = i2.nearestNeighbors(individual, 1);
-	if (mate.size()) {
-		for (i in seqLen(individual.tag)) {
-			offspring = subpop.addCrossed(individual, mate);
-			// Dispersión natal (Motor de la difusión D)
-			pos = individual.spatialPosition + rnorm(2, 0, SD);
-			offspring.setSpatialPosition(p1.pointReflected(pos));
-		}
+early() {
+	//INPROGRESS: densidad y competencia
+	offspring = p1.subsetIndividuals(maxAge=0);
+	p1.deviatePositions(offspring, "reprising", INF, "n", SD);
+	// 1. DENSIDAD Y COMPETENCIA
+	//i1.evaluate(p1); //Modificado
+	i1.evaluate(p1);
+	inds = p1.individuals;
+	density = i1.localPopulationDensity(inds); //agregado
+	//competition = i1.totalOfNeighborStrengths(inds);
+	//target_density = K / (GRID_SIZE * GRID_SIZE); //agregado
+	u = density / ((1 + FECUN) * 9000); //agregado
+	//inds.fitnessScaling = 1.0 / (1.0 + (competition / (K / (GRID_SIZE*GRID_SIZE)))); //eliminado
+	inds.fitnessScaling = 1.0 / (1.0 + FECUN * u); //agregado
+	// 2. MOVIMIENTO ADULTO
+	//pos = p1.pointDeviated(inds.size(), inds.spatialPosition, "reflecting", 1000, "n", SV);
+	//inds.setSpatialPosition(pos);
+	//mut_count = inds.countOfMutationsOfType(m2);
+	//selection_multiplier = 1.0 + S_COEFF * mut_count;
+	//f_w = 4.0 * selection_multiplier;
+	//inds.tag = rpois(inds.size(), lambda = f_w);
+}
+
+late() {
+	if (sim.cycle % 100 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount + " Mutaciones segregando: " + sim.mutations.size()) ;
+	if (p1.individualCount == 0) {
+		catn("Population went extinct! Ending the simulation.");
+		sim.simulationFinished();
 	}
 }
 
 // SALIDA DE DATOS (Mapeo Continuo -> Discreto Virtual)
 600:1000 late() {
 	
-	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount);
+	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount + " Mutaciones segregando: " + sim.mutations.size());
 	
 	grid_bins = Dictionary();
 	inds = p1.individuals;
 	
 	// Calcular coordenada de celda (0-9)
-	xs = asInteger(floor(inds.x * GRID_SIZE));
-	ys = asInteger(floor(inds.y * GRID_SIZE));
+	xs = asInteger(floor((inds.x / MAP_WIDTH) * GRID_SIZE));
+	ys = asInteger(floor((inds.y / MAP_WIDTH) * GRID_SIZE));
 	
-	// Corrección de bordes
+	// Corrección de bordes (ahora es seguro)
 	xs = ifelse(xs >= GRID_SIZE, GRID_SIZE - 1, xs);
 	ys = ifelse(ys >= GRID_SIZE, GRID_SIZE - 1, ys);
 	
@@ -148,19 +163,19 @@ reproduction() {
 	available_bins = grid_bins.allKeys;
 	
 	// CORRECCIÓN 1: Inicializar como vectores vacíos de verdad
-	lines_m1 = character(0); // <--- !!! IMPORTANTE
-	lines_m2 = character(0); // <--- !!! IMPORTANTE
+	lines_m1 = ""; // <--- !!! IMPORTANTE
+	lines_m2 = ""; // <--- !!! IMPORTANTE
 	
 	for (bin_id in available_bins) {
 		inds_in_bin = grid_bins.getValue(bin_id);
 		
 		// CORRECCIÓN 2: Convertir la llave (que es String) a Entero para hacer matemáticas
-		bin_val = asInteger(bin_id); // <--- !!! IMPORTANTE
+		inds_in_bin = grid_bins.getValue(bin_id); // <--- !!! IMPORTANTE
 		
-		x_grid = asInteger(bin_val / GRID_SIZE) + 1; // Usamos bin_val, no bin_id
-		y_grid = (bin_val % GRID_SIZE) + 1;          // Usamos bin_val, no bin_id
+		x_grid = asInteger(bin_id / GRID_SIZE) + 1;
+		y_grid = (bin_id % GRID_SIZE) + 1;         // Usamos bin_val, no bin_id
 		
-		all_genomes = inds_in_bin.haplosomes; 
+		all_genomes = inds_in_bin.haplosomes;
 		chr_tot = size(all_genomes);
 		all_muts = unique(all_genomes.mutations);
 		
@@ -174,7 +189,7 @@ reproduction() {
 				lines_m2 = c(lines_m2, line);
 			}
 			// m1 (Neutro) - Filtro > 1% global (opcional, pero tu comentario decía filtro global)
-            // Aquí lo dejé tal cual lo tenías, guardando todo.
+			// Aquí lo dejé tal cual lo tenías, guardando todo.
 			else if (m.mutationType == m1) {
 				line = paste(c(sim.cycle, m.id, x_grid, y_grid, freq, count, chr_tot), sep=",");
 				lines_m1 = c(lines_m1, line);
@@ -185,64 +200,64 @@ reproduction() {
 	// Ahora length sí será 0 si no hay datos, y >0 si hay datos correctos
 	if (length(lines_m1) > 0)
 		writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv", paste(lines_m1, sep="\n"), append=T);
-		
+	
 	if (length(lines_m2) > 0)
 		writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv", paste(lines_m2, sep="\n"), append=T);
-
+	
 	//if (size(available_bins) > 0) {
-		// Número de sitios arqueológicos descubiertos (1 a 10)
+	// Número de sitios arqueológicos descubiertos (1 a 10)
 	//	num_sites = rdunif(1, 1, 10);
 	//	sites_to_sample_count = min(num_sites, size(available_bins));
-		
+	
 	//	if (sites_to_sample_count > 0) {
 	//		sampled_bin_ids = sample(available_bins, sites_to_sample_count);
-			//TODO: Adaptar el codigo de esta parte para que registre también
-			//el mismo filtro que hay de 0.0001 frq global que hay en
-			//el script discreto
+	//TODO: Adaptar el codigo de esta parte para que registre también
+	//el mismo filtro que hay de 0.0001 frq global que hay en
+	//el script discreto
 	//		lines_aDNA_m1 = "";
-    //        lines_aDNA_m2 = "";
-			
+	//        lines_aDNA_m2 = "";
+	
 	//		for (bin_id in sampled_bin_ids) {
 	//			inds_in_bin = grid_bins.getValue(bin_id);
-				
-				// Coordenadas discretas (1 a 10)
+	
+	// Coordenadas discretas (1 a 10)
 	//			x_grid = asInteger(bin_id / GRID_SIZE) + 1;
 	//			y_grid = (bin_id % GRID_SIZE) + 1;
-				
-				// Número de individuos en el yacimiento (1 a 100)
+	
+	// Número de individuos en el yacimiento (1 a 100)
 	//			num_inds_to_sample = rdunif(1, 1, 100);
 	//			num_inds_real = min(num_inds_to_sample, size(inds_in_bin));
-				
+	
 	//			if (num_inds_real > 0) {
 	//				sampled_inds = sample(inds_in_bin, num_inds_real);
 	//				sampled_genomes = sampled_inds.haplosomes;
 	//				current_chr_tot = size(sampled_genomes);
 	//				muts_in_sample = unique(sampled_genomes.mutations);
-					
+	
 	//				for (m in muts_in_sample) {
 	//					mut_type_str = "NA";
 	//					if (m.mutationType == m1) mut_type_str = "m1";
 	//					else if (m.mutationType == m2) mut_type_str = "m2";
-						
+	
 	//					if (mut_type_str != "NA") {
 	//						count = sum(sampled_genomes.mutations == m);
 	//						freq = count / asFloat(current_chr_tot);
 	//						
 	//						line = paste(c(sim.cycle, m.id, mut_type_str, x_grid, y_grid, freq, count, current_chr_tot), sep=",");
 	//						if (m.mutationType == m1)
-      //                          lines_aDNA_m1 = c(lines_aDNA_m1, line);
-     //                       else if (m.mutationType == m2)
-     //                           lines_aDNA_m2 = c(lines_aDNA_m2, line);
+	//                          lines_aDNA_m1 = c(lines_aDNA_m1, line);
+	//                       else if (m.mutationType == m2)
+	//                           lines_aDNA_m2 = c(lines_aDNA_m2, line);
 	//					}
 	//				}
 	//			}
 	//		}
 	//		if (length(lines_aDNA_m1) > 0)
-    //            writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv", paste(lines_aDNA_m1, sep="\n"), append=T);
-            
-    //        if (length(lines_aDNA_m2) > 0)
-    //            writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv", paste(lines_aDNA_m2, sep="\n"), append=T);
+	//            writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv", paste(lines_aDNA_m1, sep="\n"), append=T);
+	
+	//        if (length(lines_aDNA_m2) > 0)
+	//            writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv", paste(lines_aDNA_m2, sep="\n"), append=T);
 	//	}
 	//}
-	
+
 }
