@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/plot_%A_%a.out
 #SBATCH --error=logs/plot_%A_%a.err
-#SBATCH --array=1,51,101,151,201        # Inicios de cada grupo (1 Job por valor de Migración)
+#SBATCH --array=1,11,21,31,41,51        # Inicios de cada grupo (1 Job por valor de Migración)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -11,7 +11,7 @@
 
 module load r/4.1.3
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
-REPLICAS_PER_VAL=50
+REPLICAS_PER_VAL=10 #Camvio de 50 a 10 por Continuos
 
 # Calcular índices para saber qué Valor de Migración es este
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
@@ -39,10 +39,10 @@ MODO=${1:-ambos}
 # ... (Bloques de selección de archivos MODO continuo/discreto IGUAL QUE ANTES) ...
 if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
     FILES_TO_PROCESS+=(
-        "Analysis_C_FULL_seleccion_m2"
+        #"Analysis_C_FULL_seleccion_m2"
         "Analysis_C_FULL_neutros_m1"
-        "Analysis_C_aDNA_scattered_neutros_m1"
-        "Analysis_C_aDNA_scattered_seleccion_m2"
+        #"Analysis_C_aDNA_scattered_neutros_m1"
+        #"Analysis_C_aDNA_scattered_seleccion_m2"
     )
 fi
 
