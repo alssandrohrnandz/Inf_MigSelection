@@ -14,7 +14,7 @@ initialize() {
 	// m1: Neutral
 	// m2: Under natural selection (S_COEFF will be applied manually in early())
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.01);
+	initializeMutationType("m2", 0.5, "f", S);
 	initializeGenomicElementType("g1", c(m1, m2), c(0.99, 0.01)); //This should be the proportion of m1 and m2 that will appear in our sims
 	//Structure of our Chrs
 	rec_ends = NULL;
@@ -102,23 +102,12 @@ early() {
 	//INPROGRESS: densidad y competencia
 	offspring = p1.subsetIndividuals(maxAge=0);
 	p1.deviatePositions(offspring, "reprising", INF, "n", SD);
-	// 1. DENSIDAD Y COMPETENCIA
-	//i1.evaluate(p1); //Modificado
 	i1.evaluate(p1);
 	inds = p1.individuals;
 	density = i1.localPopulationDensity(inds); //agregado
-	//competition = i1.totalOfNeighborStrengths(inds);
 	//target_density = K / (GRID_SIZE * GRID_SIZE); //agregado
 	u = density / ((1 + FECUN) * 9000); //agregado
-	//inds.fitnessScaling = 1.0 / (1.0 + (competition / (K / (GRID_SIZE*GRID_SIZE)))); //eliminado
 	inds.fitnessScaling = 1.0 / (1.0 + FECUN * u); //agregado
-	// 2. MOVIMIENTO ADULTO
-	//pos = p1.pointDeviated(inds.size(), inds.spatialPosition, "reflecting", 1000, "n", SV);
-	//inds.setSpatialPosition(pos);
-	//mut_count = inds.countOfMutationsOfType(m2);
-	//selection_multiplier = 1.0 + S_COEFF * mut_count;
-	//f_w = 4.0 * selection_multiplier;
-	//inds.tag = rpois(inds.size(), lambda = f_w);
 }
 
 late() {
@@ -129,7 +118,6 @@ late() {
 	}
 }
 
-// SALIDA DE DATOS (Mapeo Continuo -> Discreto Virtual)
 600:1000 late() {
 	
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount + " Mutaciones segregando: " + sim.mutations.size());
@@ -161,15 +149,12 @@ late() {
 	}
 	
 	available_bins = grid_bins.allKeys;
-	
-	// CORRECCIÓN 1: Inicializar como vectores vacíos de verdad
+
 	lines_m1 = ""; // <--- !!! IMPORTANTE
 	lines_m2 = ""; // <--- !!! IMPORTANTE
 	
 	for (bin_id in available_bins) {
 		inds_in_bin = grid_bins.getValue(bin_id);
-		
-		// CORRECCIÓN 2: Convertir la llave (que es String) a Entero para hacer matemáticas
 		inds_in_bin = grid_bins.getValue(bin_id); // <--- !!! IMPORTANTE
 		
 		x_grid = asInteger(bin_id / GRID_SIZE) + 1;

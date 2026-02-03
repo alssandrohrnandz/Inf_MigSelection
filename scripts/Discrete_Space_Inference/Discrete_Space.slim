@@ -7,12 +7,14 @@ initialize() {
 	defineConstant("pop", 10);
 	if (!exists("id_replica"))
 		defineConstant("id_replica", 1);
+	if (!exists("Sel_V"))
+		defineConstant("Sel_V",0.01);
 	defineConstant("matrix_size", pop*pop);
 	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/");
 	defineConstant("MU", 1.2e-8);
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", 0.01); 
+	initializeMutationType("m2", 0.5, "f", Sel_V); 
 	
 	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); 
 	

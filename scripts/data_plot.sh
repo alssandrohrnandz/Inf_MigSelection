@@ -48,7 +48,7 @@ fi
 
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     FILES_TO_PROCESS+=(
-        "Analysis_D_FULL_neutros_m1"
+        "Analysis_C_FULL_seleccion_m2" ##TODO: Cambiar aqui los alelos que vamos a analizar
     )
 fi
 
