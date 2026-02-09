@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-50                # 5 valores migración * 50 réplicas = 250
+#SBATCH --array=1-250              
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -16,27 +16,35 @@ module load slim/5.1
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
+SEL_VALUES=(0.5 0.25 0.1 0.05 0.01) ## TODO: Modificado para agregar variacion en la seleccion
 REPLICAS_PER_VAL=10
-
-#rm data/results_Discrete/outputs_LL/*.txt
-#rm data/results_Continuous/outputs_LL/*.txt
-
-# Borra todo lo que haya en outputs_LL para empezar fresco
-
 
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
-CURRENT_MIG=${MIG_VALUES[$IDX]}
+NUM_SEL=${#SEL_VALUES[@]} #Valores de seleccion que tenemos
+IDX_MIG=$(( $IDX / $NUM_SEL )) 
+IDX_SEL=$(( $IDX % $NUM_SEL ))
+CURRENT_MIG=${MIG_VALUES[$IDX_MIG]}
+CURRENT_SEL=${SEL_VALUES[$IDX_SEL]}
+
 REAL_REP=$(( ($SLURM_ARRAY_TASK_ID - 1) % $REPLICAS_PER_VAL + 1 ))
 
-echo "DEBUG INFO:"
-echo "Job ID Global: $SLURM_ARRAY_TASK_ID"
-echo "  -> Valor Migración: $CURRENT_MIG"
-echo "  -> Réplica #$REAL_REP del grupo"
+# === DEBUG INFO ===
+echo "Job ID: $SLURM_ARRAY_TASK_ID"
+echo "  -> Combo ID: $COMBO_ID"
+echo "  -> Migración [$IDX_MIG]: $CURRENT_MIG"
+echo "  -> Selección [$IDX_SEL]: $CURRENT_SEL"
+echo "  -> Réplica: $REAL_REP"
 
 START_TIME=$(date +%s)
 TASK_ID=$SLURM_ARRAY_TASK_ID
 echo "Iniciando Job ID: $TASK_ID en $(hostname)"
+
+# Validación de seguridad 
+if [ -z "$CURRENT_MIG" ] || [ -z "$CURRENT_SEL" ]; then
+    echo "Error: Indices fuera de rango. Revisa --array vs Arrays de valores."
+    exit 1
+fi
 
 echo "--> Modo: $MODO | Acción: $ACCION"
 
@@ -49,7 +57,7 @@ ACCION=${2:-completo}
 echo "--> Mode: $MODO | Action: $ACCION"
 
 # Definiendo argumentos de SLiM
-SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG"
+SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG -d Sel_V=$SEL_VALUES" 
 
 FILES_TO_PROCESS=()
 
@@ -84,14 +92,14 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
-    
+    ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m2"
-        "D_FULL_neutros_m1" 
-        "D_aDNA_scattered_neutros_m1"
-        "D_aDNA_scattered_seleccion_m2"
+        #"D_FULL_neutros_m1" 
+        #"D_aDNA_scattered_neutros_m1"
+        #"D_aDNA_scattered_seleccion_m2"
     )
-    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv"
+    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_seleccion_m2_${TASK_ID}.csv" ##TODO: Aqui cambie el D_FULL_neutros_m1
 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
         
@@ -137,7 +145,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         
         if [[ "$PREFIJO" == *"m1"* ]]; then
             echo "    [Subsampling] Seleccionando N SNPs neutros al azar..."
-            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq  > "${SUBSET_OUTPUT}"
+            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq  > "${SUBSET_OUTPUT}" #T
         else
             echo "    [Full] Conservando todas las mutaciones bajo selección..."
             awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"
