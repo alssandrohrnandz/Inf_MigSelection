@@ -10,3 +10,4 @@ data/
 scripts/inference/.DS_Store
 !data/results_Discrete/figures/
 !data/results_Continuous/figures/
+test_scripts/
