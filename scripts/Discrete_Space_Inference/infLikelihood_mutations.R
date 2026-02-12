@@ -37,7 +37,7 @@ n <- GRID_SIZE
 d <- 0.5
 s<-0.0
 MAX_STEPS <- 10000
-MIN_GENERATIONS <- 3
+MIN_GENERATIONS <- 2
 N_eff <- 1000
 
 # Parámetros de búsqueda
