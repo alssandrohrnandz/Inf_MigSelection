@@ -23,8 +23,10 @@ output_dir  <- args[2]
 task_id_reg <- args[3]
 m_value     <- as.numeric(args[4])
 prefix      <- if(!is.na(args[5])) args[5] else "Analysis"
+s_value     <- as.numeric(args[6])
 
 print(paste("Analizando Superficie Conjunta (D vs s). Migración teórica:", m_value))
+print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_value))
 
 # ==========================================
 # 2. Carga y Composite Likelihood
@@ -63,11 +65,16 @@ composite_surface <- full_data %>%
 
 # El punto con el LL más alto en toda la superficie
 mle_point <- composite_surface %>%
-  filter(LL_sum == max(LL_sum))
+  filter(LL_sum == max(LL_sum)) %>%
+  slice(1)
 
 best_D <- mle_point$D[1]
 best_s <- mle_point$s[1]
 max_LL <- mle_point$LL_sum[1]
+
+inferred_D <- best_D
+inferred_s <- best_s
+max_LL_val <- max_LL
 
 print(paste("MLE Encontrado -> D:", best_D, "| s:", best_s))
 
@@ -105,7 +112,7 @@ p1 <- ggplot(plot_data, aes(x = D, y = s, fill = Delta_LL)) +
   # Si conoces el s teórico, podrías agregar geom_hline aquí también
   
   labs(
-    title = "Joint Likelihood Surface (Diffusion vs Selection)",
+    title = paste0("Joint Likelihood Surface (D= ",m_value," vs s= ",s_value,")"),
     subtitle = paste0("MLE: D=", best_D, ", s=", best_s),
     x = expression(paste("Diffusion Coefficient ", italic(D))),
     y = expression(paste("Selection Coefficient ", italic(s)))
@@ -117,14 +124,16 @@ p1 <- ggplot(plot_data, aes(x = D, y = s, fill = Delta_LL)) +
 # Marginalizamos D (tomamos el mejor D para cada s)
 profile_s <- composite_surface %>%
   group_by(s) %>%
-  summarise(Profile_LL = max(LL_sum)) # Maximizamos sobre D (nuisance parameter)
+  summarise(Profile_LL = max(LL_sum), .groups = "drop")
 
 p2 <- ggplot(profile_s, aes(x = s, y = Profile_LL)) +
+  geom_vline(aes(xintercept = inferred_s, color = "Inferred MLE", linetype = "Inferred MLE"), linewidth = 1) +
+  geom_vline(aes(xintercept = s_value, color = "Theoretical", linetype = "Theoretical"), linewidth = 1) +
   geom_line(color = "#e74c3c", size = 1) +
   geom_point(data = filter(profile_s, Profile_LL == max(Profile_LL)), aes(x=s, y=Profile_LL), size=3) +
   labs(
-    title = "Profile Likelihood for Selection (s)",
-    subtitle = "Marginalized over Diffusion (D)",
+    title = paste0("Profile Likelihood for Selection (s= ",s_value,")"),
+    subtitle = paste0("Marginalized over Diffusion (D= ",m_value ,")"),
     x = "Selection Coefficient (s)",
     y = "Log-Likelihood"
   ) +
@@ -139,9 +148,10 @@ profile_D <- composite_surface %>%
 p3 <- ggplot(profile_D, aes(x = D, y = Profile_LL)) +
   geom_line(color = "#3498db", size = 1) +
   scale_x_log10() +
+  geom_point(data = filter(profile_s, Profile_LL == max(Profile_LL)), aes(x=D, y=Profile_LL), size=3) +
   labs(
-    title = "Profile Likelihood for Diffusion (D)",
-    subtitle = "Marginalized over Selection (s)",
+    title = paste0("Profile Likelihood for Diffusion (D= ",m_value,")"),
+    subtitle = paste0("Marginalized over Selection (s= ",s_value,")"),
     x = "Diffusion Coefficient (D)",
     y = "Log-Likelihood"
   ) +
@@ -150,7 +160,7 @@ p3 <- ggplot(profile_D, aes(x = D, y = Profile_LL)) +
 # ==========================================
 # 5. Guardado
 # ==========================================
-filename_base <- paste0(prefix, "_Joint_Analysis_Mig_", m_value)
+filename_base <- paste0(prefix, "_Joint_Analysis_Mig_", m_value,"_Sel",s_value)
 
 ggsave(filename = file.path(output_dir, paste0(filename_base, "_Heatmap.png")), plot = p1, width = 8, height = 6)
 ggsave(filename = file.path(output_dir, paste0(filename_base, "_Profile_s.png")), plot = p2, width = 6, height = 4)

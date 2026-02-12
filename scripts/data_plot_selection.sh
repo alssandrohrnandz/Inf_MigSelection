@@ -107,7 +107,8 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
             "${OUTPUT_DIR}" \
             "${TASK_ID_PATTERN}" \
             "${CURRENT_MIG}" \
-            "${PREFIJO}"
+            "${PREFIJO}" \
+            "${CURRENT_SEL}"
         
     else
         echo "ALERTA: No se encontraron archivos iniciales (ID ${START_ID}) para ${PREFIJO}."

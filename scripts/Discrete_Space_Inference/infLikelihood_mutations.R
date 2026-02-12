@@ -20,7 +20,7 @@ print(paste("Procesando archivo:", freq_file))
 print(paste("Modelo:", model_name))
 print(paste("Task ID:", task_id))
 
-# === 2. Configuración del Modelo ===
+# the modern model
 diffusion2D <- function(t, conc, par) {
   Conc <- matrix(nrow = n, ncol = n, data = conc)
   dConc <- Conc*(1-Conc)*(Conc*par[2]+par[3]*(1-2*Conc))
@@ -40,28 +40,26 @@ MAX_STEPS <- 10000
 MIN_GENERATIONS <- 2
 N_eff <- 1000
 
-# Parámetros de búsqueda
-# Parámetros de búsqueda (Corregido: Sin duplicados y ordenado)
+# parámetros a buscar TODO:EDITAR ESTO PORQUE PUEDE ESTAR MAL
 DifussionValuesToCheck <- sort(unique(c(0.0000001, 0.000001, 0.000005, 0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1)))
-SelectionValuesToCheck <-seq(-0.05, 0.05, by=0.01)
+SelectionValuesToCheck <- sort(unique(c(-0.5,-0.1,-0.05,-0.01,0,0.05,0.01,0.5,0.1,0.25,0.025,-0.025,-0.25,-1,1)))
 
-# === 3. Lectura de Datos Inteligente ===
 
-# Leemos con header=TRUE porque SLiM lo escribe
+# lectura del archivo
 freq_data_raw <- read.csv(freq_file, header=TRUE, stringsAsFactors=FALSE)
 
-# Detectamos estructura de columnas dinámicamente
+# numero de columnas por si acaso para datos empiricos
 num_cols <- ncol(freq_data_raw)
-
+###TODO: ESTA PARTE HAY QUE EDITARLA PARA QUE ENTREN LOS DATOS EMPIRICOS
+###NO SE TE VAYA A OLVIDAR POR FAVOR 
 if (num_cols == 8) {
-    # Caso aDNA (Tiene MutType)
     # SLiM header: Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot
+    #AADNA header: Time, SNP, Lat, Long, Freq, AlleleCount, Chr_Tot
+    #TODO: ESTA PARTE HAY QUE MODIFICARLA PARA QUE ENTREN LOS DATOS EMPIRICOS SIN VASELINA
     colnames(freq_data_raw) <- c("Generation","MutationID","TypeMut","X","Y","Frequency","Count","Chr_Tot")
 } else if (num_cols == 7) {
-    # Caso FULL (No tiene MutType)
-    # SLiM header: Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot
-    colnames(freq_data_raw) <- c("Generation","MutationID","X","Y","Frequency","Count","Chr_Tot")
-    # Creamos una columna dummy para que el código no falle si llamas a TypeMut luego
+    colnames(freq_data_raw) <- c("Generation","MutationID","X","Y","Frequency","Count","Chr_Tot") #<- editar aqui paa datos empiricos
+
     freq_data_raw$TypeMut <- NA 
 } else {
     stop(paste("El archivo tiene un número inesperado de columnas:", num_cols))
@@ -69,11 +67,9 @@ if (num_cols == 8) {
 
 freq_data <- freq_data_raw
 
-# === 4. Filtrado por Subset (Uso del archivo de Bash) ===
+# filtramos subset
 if (file.exists(subset_file) && file.info(subset_file)$size > 0) {
     snps_subset <- readLines(subset_file)
-    # Filtramos para analizar solo lo que Bash nos dijo
-    # Convertimos a integer por seguridad
     snps_to_analyze <- intersect(unique(freq_data$MutationID), as.integer(snps_subset))
     print(paste("Analizando", length(snps_to_analyze), "SNPs indicados en el subset."))
 } else {
@@ -81,7 +77,7 @@ if (file.exists(subset_file) && file.info(subset_file)$size > 0) {
     snps_to_analyze <- sort(unique(freq_data$MutationID))
 }
 
-# Cálculos auxiliares si no vinieran de SLiM (SLiM ya da Count y Chr_Tot, pero esto asegura enteros)
+# calculos auxiliares si no vinieran de SLiM (SLiM ya da Count y Chr_Tot, pero esto asegura enteros)
 #freq_data$AlleleCount <- round(freq_data$Frequency * freq_data$Chr_Tot) 
 freq_data$ChrOBS <- freq_data$Chr_Tot
 
@@ -91,7 +87,6 @@ for (snp_actual in snps_to_analyze) {
   
   df_snp <- freq_data[freq_data$MutationID == snp_actual, ]
   
-  # Validaciones iniciales
   if(nrow(df_snp) == 0) next
   if(max(df_snp$Frequency) == 0) next
   
@@ -126,7 +121,6 @@ for (snp_actual in snps_to_analyze) {
 
   if(sum(Conc0) == 0) next
 
-  # Grid Search
   results <- expand.grid(D=DifussionValuesToCheck, s=SelectionValuesToCheck)
   results$LL <- NA
   
@@ -138,8 +132,7 @@ for (snp_actual in snps_to_analyze) {
     D_val <- results$D[i]
     s_val <- results$s[i]
     pars <- c(D_val, d, s_val) 
-    
-    # ODE Solver
+
     ST3 <- ode.2D(
       y      = Conc0,
       times  = times_run,
@@ -157,7 +150,7 @@ for (snp_actual in snps_to_analyze) {
     
     ll <- 0
     
-    # Debugging (Imprimir solo para la primera iteración para ver si todo es 0)
+
     # if(i == 1) print(paste("Max freq en matriz:", max(ST3_mat)))
 
     for(j in 1:nrow(df_snp)) {
@@ -175,13 +168,9 @@ for (snp_actual in snps_to_analyze) {
       xg <- df_snp$X[j]
       yg <- df_snp$Y[j]
       
-      # --- CORRECCIÓN DE INDEXACIÓN ---
-      # Asumiendo que llenaste Conc0[ox, oy] (Fila=X, Col=Y)
-      # La vectorización es (Columna-1)*n + Fila
-      # Por lo tanto: (Y - 1) * n + X
       spatial_idx <- (yg - 1) * n + xg #indexacion por ver 
       
-      # Protección de índices
+
       if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
 
       pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
@@ -190,7 +179,7 @@ for (snp_actual in snps_to_analyze) {
       piso_minimo <- 1e-6
       pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
       
-      # DEBUG TEMPORAL: 
+     
       # Si pred_freq siempre es 0.0005, el modelo "no ve" el alelo en esa coordenada
       # if(i==1 && j < 5) print(paste("Gen:", t_abs, "X:", xg, "Y:", yg, "Raw:", pred_freq_raw, "Final:", pred_freq))
 
@@ -205,18 +194,7 @@ for (snp_actual in snps_to_analyze) {
     results$LL[i] <- ll
   }
 
-  # Guardar Resultados
-  # Construimos la ruta de salida basada en la entrada para no usar "../" ciego
-  # Asumimos estructura: data/results_LL/
-  # El script de bash definio resultados en data/results_LL
-  
-  # Extraemos el directorio base del archivo de entrada
-  #input_dir <- dirname(freq_file) 
-  # Subimos un nivel y entramos a results_LL (asumiendo estructura estandar)
-  # Si input es .../data/results_simulations/archivo.csv -> .../data/results_LL/
-  
-  # Si no existe, usamos el actual
-  #if(!dir.exists(output_dir)) output_dir <- "."
+  # Guardar Resultados <- segun chatgtp pero hay que modificar el nombre
   
   output_filename <- paste0("Analysis_", model_name,"_" ,task_id,"_SNP_", snp_actual, ".txt")
   output_path <- file.path(output_dir, output_filename)
