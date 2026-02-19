@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/plot_%A_%a.out
 #SBATCH --error=logs/plot_%A_%a.err
-#SBATCH --array=1,11,21,31,41,51,61,71,81,91,101,111,121,131,141,151,161,171,181,191,201,211,221,231,241
+#SBATCH --array=1,51,101,151,201
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -12,9 +12,9 @@
 module load r/4.1.3
 
 # Definimos variables
-MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
-SEL_VALUES=(0.5 0.25 0.1 0.05 0.01)
-REPLICAS_PER_VAL=10
+MIG_VALUES=(0.0)
+SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
+REPLICAS_PER_VAL=50
 
 # === LÓGICA DE ÍNDICES CORREGIDA (2 DIMENSIONES) ===
 
