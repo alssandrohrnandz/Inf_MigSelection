@@ -1,0 +1,21 @@
+---
+title: "Resultado de Inferencias de Selección con Migración 0"
+format: 
+  html:
+    self-contained: true
+    code-fold: true
+  pptx: default
+---
+
+## Metodología
+En esta corrida utilizamos parámetros de selección $s = 0.1, 0.05, 0.01, 0.005, 0.001$. 
+Los logs se procesaron en el HPCC y se generaron los siguientes gráficos.
+
+## Inferencias de Selección con diferentes valores de selección
+![Resultados del experimento](/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/figures/Analysis_D_FULL_seleccion_m2_Joint_Analysis_Mig_0_Sel0.1_Profile_s.png)
+
+```{bash}
+#| label: stats
+# Puedes ejecutar comandos de bash directamente para mostrar 
+# estadísticas rápidas del log en el informe
+grep "Fixed" logs/sim_res.log | wc -l

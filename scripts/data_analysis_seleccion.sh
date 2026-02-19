@@ -15,8 +15,8 @@ module load slim/5.1
 
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
-MIG_VALUES=(0.0)
-SEL_VALUES=(0.1 0.05 0.01 0.005 0.001) ## TODO: Modificado para agregar variacion en la seleccion
+MIG_VALUES=(0.0)SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
+ ## TODO: Modificado para agregar variacion en la seleccion
 REPLICAS_PER_VAL=50
 
 # Calcular índices
