@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-250              
+#SBATCH --array=1-15              
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -15,9 +15,10 @@ module load slim/5.1
 
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
-MIG_VALUES=(0.0)SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
+MIG_VALUES=(0.0)
+SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
  ## TODO: Modificado para agregar variacion en la seleccion
-REPLICAS_PER_VAL=50
+REPLICAS_PER_VAL=3
 
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
@@ -31,7 +32,6 @@ REAL_REP=$(( ($SLURM_ARRAY_TASK_ID - 1) % $REPLICAS_PER_VAL + 1 ))
 
 # === DEBUG INFO ===
 echo "Job ID: $SLURM_ARRAY_TASK_ID"
-echo "  -> Combo ID: $COMBO_ID"
 echo "  -> Migración [$IDX_MIG]: $CURRENT_MIG"
 echo "  -> Selección [$IDX_SEL]: $CURRENT_SEL"
 echo "  -> Réplica: $REAL_REP"

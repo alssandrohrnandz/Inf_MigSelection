@@ -140,7 +140,7 @@ for (snp_actual in snps_to_analyze) {
       parms  = pars,
       dimens = c(n, n),
       method = rkMethod("rk45ck"),
-      atol   = 1e-10,
+      atol   = 1e-10, ##TODO: MODIFICACION HECHA
       rtol   = 1e-10,
       maxsteps = 1e5
     )
