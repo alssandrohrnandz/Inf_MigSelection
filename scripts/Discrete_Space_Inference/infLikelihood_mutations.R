@@ -34,15 +34,17 @@ diffusion2D <- function(t, conc, par) {
 GRID_SIZE <- 10
 dy <- dx <- 1
 n <- GRID_SIZE
-d <- 0.5
+
 s<-0.0
+d <- 2*s # Parametrización
+
 MAX_STEPS <- 10000
 MIN_GENERATIONS <- 2
 N_eff <- 1000
 
 # parámetros a buscar TODO:EDITAR ESTO PORQUE PUEDE ESTAR MAL
-DifussionValuesToCheck <- sort(unique(c(0.0000001, 0.000001, 0.000005, 0.00001, 0.00005, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1)))
-SelectionValuesToCheck <- sort(unique(c(-0.5,-0.1,-0.05,-0.01,0,0.05,0.01,0.5,0.1,0.25,0.025,-0.025,-0.25,-1,1)))
+DifussionValuesToCheck <- sort(unique(c(0.0000000001)))
+SelectionValuesToCheck <- sort(unique(c(-0.5,-0.1,-0.05,-0.01,-0.005,-0.001,0,0.001,0.005,0.05,0.01,0.5,0.1,0.25,0.025,-0.025,-0.25,-1,1)))
 
 
 # lectura del archivo
@@ -131,6 +133,7 @@ for (snp_actual in snps_to_analyze) {
     
     D_val <- results$D[i]
     s_val <- results$s[i]
+    d <- 2*s_val
     pars <- c(D_val, d, s_val) 
 
     ST3 <- ode.2D(
@@ -154,6 +157,12 @@ for (snp_actual in snps_to_analyze) {
     # if(i == 1) print(paste("Max freq en matriz:", max(ST3_mat)))
 
     for(j in 1:nrow(df_snp)) {
+
+      obs_freq <- df_snp$Frequency[j]
+      if (obs_freq < 0.02 || obs_freq > 0.98) {
+        next # Saltamos al siguiente punto geográfico/temporal
+      }
+
       t_abs <- df_snp$Generation[j]
       time_idx <- match(t_abs, times_run)
       
@@ -170,13 +179,12 @@ for (snp_actual in snps_to_analyze) {
       
       spatial_idx <- (yg - 1) * n + xg #indexacion por ver 
       
-
       if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
 
       pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
       
       # Piso mínimo (Evita log(0))
-      piso_minimo <- 1e-6
+      piso_minimo <- 1 / (2 * N_eff)
       pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
       
      

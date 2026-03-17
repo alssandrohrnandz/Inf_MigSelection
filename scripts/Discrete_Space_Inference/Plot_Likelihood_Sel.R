@@ -35,135 +35,177 @@ print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_v
 pattern_to_search <- paste0("^", prefix, ".*_", task_id_reg, "_SNP_.*\\.txt$")
 file_list <- list.files(path = input_dir, pattern = pattern_to_search, full.names = TRUE)
 
-if(length(file_list) == 0) stop("No se encontraron archivos.")
+print(paste("Searching pattern:", pattern_to_search))
 
-print(paste("Procesando", length(file_list), "archivos para generar la superficie..."))
+file_list <- list.files(
+  path = input_dir,
+  pattern = pattern_to_search,
+  full.names = TRUE
+)
 
-# Función de lectura robusta
-read_and_process <- function(f) {
-  tryCatch({
-    d <- read.table(f, header = TRUE)
-    return(d) # Debe tener columnas D, s, LL
-  }, error = function(e) return(NULL))
+num_files <- length(file_list)
+if (num_files == 0) stop("No se encontraron archivos para procesar.")
+
+print(paste("Found", num_files, "files matching the Task Group."))
+
+replica_ids <- str_extract(basename(file_list), "_[0-9]+_SNP_") %>% 
+               str_extract("[0-9]+") %>% 
+               as.numeric()
+print(paste("Replica IDs found:", paste(unique(replica_ids), collapse = ", ")))
+
+file_groups <- split(file_list, replica_ids)
+
+actual_groups <- length(file_groups)
+print(paste("Se identificaron", actual_groups, "simulaciones/réplicas distintas."))
+print(paste("Promedio de SNPs por réplica:", round(mean(sapply(file_groups, length)), 1)))
+
+# ==========================================
+# 3. Data Processing (Composite & Single-SNP MLE)
+# ==========================================
+
+process_group <- function(files, rep_id) {
+  group_name <- paste("Replica", rep_id)
+  
+  # 1. Leer archivos y ETIQUETAR de qué SNP/archivo viene cada dato
+  raw_data_list <- lapply(files, function(f) {
+    tryCatch({
+      d <- read.table(f, header = TRUE)
+      # Extraemos el número de SNP del nombre del archivo (ej. "..._SNP_125.txt" -> "125")
+      snp_num <- stringr::str_extract(basename(f), "(?<=_SNP_)[0-9]+")
+      d$SNP_ID <- ifelse(is.na(snp_num), basename(f), snp_num) # Fallback al nombre completo si falla
+      return(d)
+    }, error = function(e) {
+      warning(paste("Error reading:", f))
+      return(NULL)
+    })
+  })
+  
+  # Combinar todo
+  full_data <- bind_rows(raw_data_list)
+  if(nrow(full_data) == 0) return(NULL)
+  
+  # A) CÁLCULO COMPOSITE LIKELIHOOD (Para toda la réplica junta)
+  composite_surface <- full_data %>%
+    group_by(D, s) %>%
+    summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Group = group_name, Replica_ID = rep_id)
+  
+  # B) EXTRACCIÓN SINGLE-SNP MLE (El máximo absoluto de cada archivo individual)
+  single_snp_mle <- full_data %>%
+    group_by(SNP_ID) %>%
+    # Nos quedamos con la fila que tenga el LL más alto para este SNP
+    slice_max(order_by = LL, n = 1, with_ties = FALSE) %>%
+    ungroup() %>%
+    mutate(Group = group_name, Replica_ID = rep_id)
+  
+  # Devolvemos ambos en forma de lista
+  return(list(composite = composite_surface, singles = single_snp_mle))
 }
 
-# Leemos y combinamos todo
-raw_data_list <- lapply(file_list, read_and_process)
-full_data <- bind_rows(raw_data_list)
+print("Calculating Composite Likelihoods & Extracting Single-SNP MLEs...")
 
-if(nrow(full_data) == 0) stop("Datos vacíos.")
+# Iteramos sobre las réplicas
+group_summaries <- lapply(names(file_groups), function(id) {
+  process_group(file_groups[[id]], id)
+})
 
-# --- CÁLCULO DEL COMPOSITE LIKELIHOOD ---
-# Sumamos el LL para cada combinación única de D y s
-composite_surface <- full_data %>%
-  group_by(D, s) %>%
-  summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop")
+# Como ahora es una lista doble, separamos y unimos los dataframes correspondientes
+combined_data <- bind_rows(lapply(group_summaries, `[[`, "composite"))
+all_singles_mle <- bind_rows(lapply(group_summaries, `[[`, "singles"))
 
-# ==========================================
-# 3. Encontrar el Máximo (MLE)
-# ==========================================
-
-# El punto con el LL más alto en toda la superficie
-mle_point <- composite_surface %>%
-  filter(LL_sum == max(LL_sum)) %>%
-  slice(1)
-
-best_D <- mle_point$D[1]
-best_s <- mle_point$s[1]
-max_LL <- mle_point$LL_sum[1]
-
-inferred_D <- best_D
-inferred_s <- best_s
-max_LL_val <- max_LL
-
-print(paste("MLE Encontrado -> D:", best_D, "| s:", best_s))
-
-# Creamos una columna de Delta Likelihood para mejorar el color del plot
-# (Hacemos que el máximo sea 0 y el resto negativo)
-composite_surface <- composite_surface %>%
-  mutate(Delta_LL = LL_sum - max_LL)
-
-# Filtramos valores extremadamente bajos para que el gráfico no se vea plano
-# Solo mostramos valores dentro de un rango razonable del pico (ej. los top 100 log-units)
-limit_LL <- -100 
-plot_data <- composite_surface %>%
-  filter(Delta_LL > limit_LL)
+if(nrow(combined_data) == 0) stop("No valid data could be loaded.")
 
 # ==========================================
-# 4. Generación de Gráficos
+# 4. Extracción de Máximos (MLE por Réplica)
 # ==========================================
+print("Extrayendo MLE (Maximum Likelihood Estimate) por cada réplica...")
 
-# --- GRÁFICO 1: HEATMAP CONJUNTO (D vs s) ---
-# Este es el gráfico más importante para ver la correlación
+# Para cada réplica, buscamos la fila exacta que tiene el LL_sum más alto
+mle_per_replica <- combined_data %>%
+  group_by(Replica_ID) %>%
+  slice_max(order_by = LL_sum, n = 1, with_ties = FALSE) %>%
+  ungroup()
 
-p1 <- ggplot(plot_data, aes(x = D, y = s, fill = Delta_LL)) +
-  geom_tile() + # Dibuja la cuadrícula
-  scale_x_log10(
-    breaks = unique(composite_surface$D), # Usamos los cortes de tu grid
-    labels = trans_format("log10", math_format(10^.x))
+print(paste("Se extrajeron", nrow(mle_per_replica), "puntos máximos (uno por simulación)."))
+
+# ==========================================
+# 5. Generación de Gráficos de Distribución
+# ==========================================
+print("Generando gráficos...")
+
+# Definimos una paleta coherente
+color_theoric <- "#d7191c"  # Rojo para el valor real
+color_puntos_D <- "#3498db" # Azul para D
+color_puntos_s <- "#9b59b6" # Morado para s
+
+# --- GRÁFICO A: Distribución de D ---
+p_dist_D <- ggplot(mle_per_replica, aes(x = "MLE Estimates", y = D)) +
+  geom_violin(fill = "grey95", color = "grey60", alpha = 0.5) +
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
+  geom_jitter(width = 0.1, height = 0, color = color_puntos_D, size = 3, alpha = 0.7) +
+  geom_hline(aes(yintercept = m_value, color = "Theoretical"), linetype = "dashed", linewidth = 1) +
+  scale_y_log10(
+    breaks = c(1e-7, 1e-6, 1e-5, 1e-4, 1e-3, 0.01, 0.1, 0.5, 1),
+    labels = scales::trans_format("log10", scales::math_format(10^.x))
   ) +
-  scale_fill_viridis(option = "magma", name = expression(Delta*LL)) +
-  
-  # Marcamos el punto máximo con una estrella o punto blanco
-  geom_point(data = mle_point, aes(x = D, y = s), shape = 21, fill = "white", color = "black", size = 3, stroke = 1.5) +
-  
-  # Líneas teóricas (si quieres ver dónde cae la verdad)
-  geom_vline(xintercept = m_value, linetype = "dashed", color = "cyan", alpha=0.5) +
-  # Si conoces el s teórico, podrías agregar geom_hline aquí también
-  
+  annotation_logticks(sides = "l") +
+  scale_color_manual(name = "", values = c("Theoretical" = color_theoric), 
+                     labels = paste0("Theoric D = ", m_value)) +
   labs(
-    title = paste0("Joint Likelihood Surface (D= ",m_value," vs s= ",s_value,")"),
-    subtitle = paste0("MLE: D=", best_D, ", s=", best_s),
-    x = expression(paste("Diffusion Coefficient ", italic(D))),
-    y = expression(paste("Selection Coefficient ", italic(s)))
+    title = "Variance of Diffusion (D) Estimation",
+    subtitle = paste0("Distribution of MLEs across ", actual_groups, " independent simulations\nFixed s parameter = ", s_value),
+    x = "",
+    y = expression(paste("Estimated D (", m^2, "/gen) - Log Scale"))
   ) +
-  theme_dark() + # Tema oscuro resalta mejor el heatmap
-  theme(panel.grid = element_blank())
+  theme_bw() + theme(legend.position = "bottom", axis.ticks.x = element_blank())
 
-# --- GRÁFICO 2: PERFIL DE SELECCIÓN (s) ---
-# Marginalizamos D (tomamos el mejor D para cada s)
-profile_s <- composite_surface %>%
-  group_by(s) %>%
-  summarise(Profile_LL = max(LL_sum), .groups = "drop")
-
-p2 <- ggplot(profile_s, aes(x = s, y = Profile_LL)) +
-  geom_vline(aes(xintercept = inferred_s, color = "Inferred MLE", linetype = "Inferred MLE"), linewidth = 1) +
-  geom_vline(aes(xintercept = s_value, color = "Theoretical", linetype = "Theoretical"), linewidth = 1) +
-  geom_line(color = "#e74c3c", size = 1) +
-  geom_point(data = filter(profile_s, Profile_LL == max(Profile_LL)), aes(x=s, y=Profile_LL), size=3) +
+# --- GRÁFICO B: Distribución de s ---
+p_dist_s <- ggplot(mle_per_replica, aes(x = "MLE Estimates", y = s)) +
+  geom_violin(fill = "grey95", color = "grey60", alpha = 0.5) +
+  geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
+  geom_jitter(width = 0.1, height = 0, color = color_puntos_s, size = 3, alpha = 0.7) +
+  geom_hline(aes(yintercept = s_value, color = "Theoretical"), linetype = "dashed", linewidth = 1) +
+  scale_color_manual(name = "", values = c("Theoretical" = color_theoric), 
+                     labels = paste0("Theoric s = ", s_value)) +
   labs(
-    title = paste0("Profile Likelihood for Selection (s= ",s_value,")"),
-    subtitle = paste0("Marginalized over Diffusion (D= ",m_value ,")"),
-    x = "Selection Coefficient (s)",
-    y = "Log-Likelihood"
+    title = "Variance of Selection (s) Estimation",
+    subtitle = paste0("Distribution of MLEs across ", actual_groups, " independent simulations\nFixed D parameter = ", m_value),
+    x = "",
+    y = "Estimated Selection Coefficient (s)"
   ) +
-  theme_bw()
+  theme_bw() + theme(legend.position = "bottom", axis.ticks.x = element_blank())
 
-# --- GRÁFICO 3: PERFIL DE DIFUSIÓN (D) ---
-# Marginalizamos s (tomamos el mejor s para cada D)
-profile_D <- composite_surface %>%
-  group_by(D) %>%
-  summarise(Profile_LL = max(LL_sum)) 
+# --- GRÁFICO C: Diagnóstico de SNPs Individuales ---
+total_snps <- nrow(all_singles_mle)
 
-p3 <- ggplot(profile_D, aes(x = D, y = Profile_LL)) +
-  geom_line(color = "#3498db", size = 1) +
-  scale_x_log10() +
-  geom_point(data = filter(profile_s, Profile_LL == max(Profile_LL)), aes(x=D, y=Profile_LL), size=3) +
+p_diag_snps <- ggplot(all_singles_mle, aes(x = s, y = LL)) +
+  geom_jitter(aes(fill = as.factor(Replica_ID)), width = 0.002, size = 2.5, shape = 21, color = "black", alpha = 0.6) +
+  geom_vline(xintercept = s_value, linetype = "dashed", color = "red", linewidth = 1) +
   labs(
-    title = paste0("Profile Likelihood for Diffusion (D= ",m_value,")"),
-    subtitle = paste0("Marginalized over Selection (s= ",s_value,")"),
-    x = "Diffusion Coefficient (D)",
-    y = "Log-Likelihood"
+    title = "Single-Locus MLE Diagnostics: LL vs Inferred Selection (s)",
+    subtitle = paste0("Showing max Likelihood points for ", total_snps, " individual SNPs across all replicas.\nDashed line = Theoretical s (", s_value, ")"),
+    x = "Inferred Selection Coefficient (s)",
+    y = "Maximum Log-Likelihood (LL)",
+    fill = "Replica ID"
   ) +
-  theme_bw()
+  theme_bw() +
+  theme(legend.position = "right")
 
 # ==========================================
-# 5. Guardado
+# 6. Guardado de Resultados
 # ==========================================
-filename_base <- paste0(prefix, "_Joint_Analysis_Mig_", m_value,"_Sel",s_value)
 
-ggsave(filename = file.path(output_dir, paste0(filename_base, "_Heatmap.png")), plot = p1, width = 8, height = 6)
-ggsave(filename = file.path(output_dir, paste0(filename_base, "_Profile_s.png")), plot = p2, width = 6, height = 4)
-ggsave(filename = file.path(output_dir, paste0(filename_base, "_Profile_D.png")), plot = p3, width = 6, height = 4)
+# Definimos el nombre PRIMERO
+clean_filename <- paste0(prefix, "_Performance_Mig_", m_value, "_Sel_", s_value)
 
-print(paste("Gráficos guardados en:", output_dir))
+# Guardamos los 3 gráficos
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_D.png")), 
+       plot = p_dist_D, width = 6, height = 6)
+
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_s.png")), 
+       plot = p_dist_s, width = 6, height = 6)
+
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_SingleSNP_Diagnostics.png")), 
+       plot = p_diag_snps, width = 8, height = 6)
+
+print(paste("Gráficos guardados exitosamente en:", output_dir))

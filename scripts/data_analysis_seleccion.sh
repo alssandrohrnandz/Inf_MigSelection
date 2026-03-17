@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-15              
+#SBATCH --array=1-40            
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -16,9 +16,9 @@ module load slim/5.1
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.0)
-SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
+SEL_VALUES=(0.05 0.01 0.005 0.001)
  ## TODO: Modificado para agregar variacion en la seleccion
-REPLICAS_PER_VAL=3
+REPLICAS_PER_VAL=10
 
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
@@ -95,7 +95,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m2"
-        #"D_FULL_neutros_m1" 
+        "D_FULL_neutros_m1" 
         #"D_aDNA_scattered_neutros_m1"
         #"D_aDNA_scattered_seleccion_m2"
     )
@@ -108,7 +108,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     else 
         
         echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
-        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
+        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
         
     fi
 fi

@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/plot_%A_%a.out
 #SBATCH --error=logs/plot_%A_%a.err
-#SBATCH --array=1,51,101,151,201
+#SBATCH --array=1,11,21,31
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -13,8 +13,8 @@ module load r/4.1.3
 
 # Definimos variables
 MIG_VALUES=(0.0)
-SEL_VALUES=(0.1 0.05 0.01 0.005 0.001)
-REPLICAS_PER_VAL=50
+SEL_VALUES=(0.05 0.01 0.005 0.001)
+REPLICAS_PER_VAL=10
 
 # === LÓGICA DE ÍNDICES CORREGIDA (2 DIMENSIONES) ===
 
@@ -70,7 +70,7 @@ fi
 
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     FILES_TO_PROCESS+=(
-        "Analysis_D_FULL_seleccion_m2" # CORRECCIÓN 2: Cambiado de C_ a D_
+        "Analysis_D_FULL_neutros_m1" # CORRECCIÓN 2: Cambiado de C_ a D_
     )
 fi
 

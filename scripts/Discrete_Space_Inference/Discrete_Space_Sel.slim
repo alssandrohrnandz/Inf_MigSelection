@@ -13,23 +13,10 @@ initialize() {
 	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/");
 	defineConstant("MU", 1.2e-8);
 	initializeMutationRate(MU);
-	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", Sel_V); 
-	
-	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); 
-	
-	rec_ends = NULL;
-	rec_rates = NULL;
-	for (index in 1:100) {
-		start = (index - 1)*100;
-		end = start + 99;
-		initializeGenomicElement(g1, start, end);
-		rec_ends = c(rec_ends, end);
-		rec_rates = c(rec_rates, 1e-8);
-		rec_ends = c(rec_ends, end + 1);
-		rec_rates = c(rec_rates, 0.5);
-	}
-	initializeRecombinationRate(rec_rates, rec_ends);
+	initializeMutationType("m1", 0.5, "f", Sel_V);
+	initializeGenomicElementType("g1",m1,1.0);
+	initializeGenomicElement(g1, 0, 999);
+	initializeRecombinationRate(0.5);
 }
 
 1 early() {
@@ -60,55 +47,14 @@ initialize() {
 	writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
-	// 2. Verdad Terreno (Selección)
-	writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
-		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-	// aDNA Neutros
-	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-	
-	// aDNA Selección
-	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 }
 
-// Muestreo de la generación 600 a la 1000
-600:1000 late() {
+// Muestreo de la generación 1 a las 400
+1:400 late() {
 	
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));
-	//Sin aDNA
-	//if (length(lines_aDNA_m1) > 0)
-	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-	//	paste(lines_aDNA_m1, sep="\n"), append=T);
-	
-	//if (length(lines_aDNA_m2) > 0)
-	//	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-	//	paste(lines_aDNA_m2, sep="\n"), append=T);
-	
-	// --- M2 FULL ---
-	muts_m2 = sim.mutationsOfType(m2);
-	if (size(muts_m2) > 0) {
-		lines_m2 = "";
-		for (m in muts_m2) {
-			for (subpop in sim.subpopulations) {
-				freq = sim.mutationFrequencies(subpop, m);
-				// Guardamos todo, incluso ceros para m2
-				chr_tot = 2 * size(subpop.individuals);
-				allele_count = asInteger(round(freq * chr_tot));
-				index = subpop.id - 1;
-				x_pos = (index % n) + 1;
-				y_pos = asInteger(index / n) + 1;
-				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-				lines_m2 = c(lines_m2, line);
-			}
-		}
-		if (length(lines_m2) > 0) 
-			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
-			paste(lines_m2, sep="\n"), append=T);
-	}
-	
-	// --- M1 FULL ---
+
 	muts_m1 = sim.mutationsOfType(m1);
 	if (size(muts_m1) > 0) {
 		lines_m1 = "";
