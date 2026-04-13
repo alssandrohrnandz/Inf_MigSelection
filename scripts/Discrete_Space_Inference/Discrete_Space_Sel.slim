@@ -1,10 +1,10 @@
 initialize() {
 	//initializeSex("A"); 
-	defineConstant("SubpopSize", 1000);
+	defineConstant("SubpopSize", 1000); //
 	if (!exists("MIG")) 
 		defineConstant("MIG",0.05);
 	defineConstant("Migration", MIG);
-	defineConstant("pop", 10);
+	defineConstant("pop", 1); //
 	if (!exists("id_replica"))
 		defineConstant("id_replica", 1);
 	if (!exists("Sel_V"))
@@ -15,7 +15,7 @@ initialize() {
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", Sel_V);
 	initializeGenomicElementType("g1",m1,1.0);
-	initializeGenomicElement(g1, 0, 999);
+	initializeGenomicElement(g1, 0, 9999); //
 	initializeRecombinationRate(0.5);
 }
 
@@ -44,15 +44,16 @@ initialize() {
 		}
 	
 	// 1. Verdad Terreno (Neutro)
-	writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv",
+	writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+
 	
 }
 
 // Muestreo de la generación 1 a las 400
-1:400 late() {
+1:1000 late() {
 	
-	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
+	if (sim.cycle % 1 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));
 
 	muts_m1 = sim.mutationsOfType(m1);
@@ -73,7 +74,7 @@ initialize() {
 			}
 		}
 		if (length(lines_m1) > 0) 
-			writeFile(OUTPUT_PATH + "D_FULL_neutros_m1_" + id_replica + ".csv", 
+			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv", 
 			paste(lines_m1, sep="\n"), append=T);
 	}
 }

@@ -1,16 +1,9 @@
-#!/usr/bin/env Rscript
-
-# Carga silenciosa de librerías
-suppressPackageStartupMessages({
-  library(dplyr)
-  library(tidyverse)
-  library(ggplot2)
-  library(scales)
-  library(viridis) # Para escalas de color científicas
-})
+library(dplyr)
+library(stringr)
+library(ggplot2)
 
 # ==========================================
-# 1. Lectura de Argumentos
+# 1. Argumentos y Setup (Tu código original)
 # ==========================================
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -23,110 +16,84 @@ output_dir  <- args[2]
 task_id_reg <- args[3]
 m_value     <- as.numeric(args[4])
 prefix      <- if(!is.na(args[5])) args[5] else "Analysis"
-s_value     <- as.numeric(args[6])
-
+s_value    <- as.numeric(args[6]) 
+s_value <- s_value/2
 print(paste("Analizando Superficie Conjunta (D vs s). Migración teórica:", m_value))
-print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_value))
+print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_value , "(Novembre*2)"))
 
 # ==========================================
-# 2. Carga y Composite Likelihood
+# 2. Carga de Archivos
 # ==========================================
-
-pattern_to_search <- paste0("^", prefix, ".*_", task_id_reg, "_SNP_.*\\.txt$")
+pattern_to_search <- paste0("^", prefix, "_TaskID_", task_id_reg, "_All_SNPs.txt")
+print(pattern_to_search)
 file_list <- list.files(path = input_dir, pattern = pattern_to_search, full.names = TRUE)
-
-print(paste("Searching pattern:", pattern_to_search))
-
-file_list <- list.files(
-  path = input_dir,
-  pattern = pattern_to_search,
-  full.names = TRUE
-)
 
 num_files <- length(file_list)
 if (num_files == 0) stop("No se encontraron archivos para procesar.")
 
 print(paste("Found", num_files, "files matching the Task Group."))
 
-replica_ids <- str_extract(basename(file_list), "_[0-9]+_SNP_") %>% 
-               str_extract("[0-9]+") %>% 
-               as.numeric()
+replica_ids <- str_extract(basename(file_list), "(?<=TaskID_)[0-9]+") %>% as.numeric()
 print(paste("Replica IDs found:", paste(unique(replica_ids), collapse = ", ")))
 
-file_groups <- split(file_list, replica_ids)
-
-actual_groups <- length(file_groups)
-print(paste("Se identificaron", actual_groups, "simulaciones/réplicas distintas."))
-print(paste("Promedio de SNPs por réplica:", round(mean(sapply(file_groups, length)), 1)))
-
 # ==========================================
-# 3. Data Processing (Composite & Single-SNP MLE)
+# 3. Cálculo MLE (Máxima Verosimilitud por Réplica)
 # ==========================================
+print("Calculando sumas de verosimilitud y extrayendo el punto máximo por archivo...")
 
-process_group <- function(files, rep_id) {
-  group_name <- paste("Replica", rep_id)
+process_file <- function(f, rep_id) {
+  # check.names = FALSE evita que R reemplace caracteres raros en los nombres de columnas
+  d <- read.table(f, header = TRUE, sep = "\t", check.names = FALSE, stringsAsFactors = FALSE)
   
-  # 1. Leer archivos y ETIQUETAR de qué SNP/archivo viene cada dato
-  raw_data_list <- lapply(files, function(f) {
-    tryCatch({
-      d <- read.table(f, header = TRUE)
-      # Extraemos el número de SNP del nombre del archivo (ej. "..._SNP_125.txt" -> "125")
-      snp_num <- stringr::str_extract(basename(f), "(?<=_SNP_)[0-9]+")
-      d$SNP_ID <- ifelse(is.na(snp_num), basename(f), snp_num) # Fallback al nombre completo si falla
-      return(d)
-    }, error = function(e) {
-      warning(paste("Error reading:", f))
-      return(NULL)
-    })
-  })
+  # Separar la columna SNP de los valores numéricos de Log-Likelihood
+  ll_matrix <- d[, colnames(d) != "SNP", drop = FALSE]
   
-  # Combinar todo
-  full_data <- bind_rows(raw_data_list)
-  if(nrow(full_data) == 0) return(NULL)
+  # A) CÁLCULO COMPOSITE LIKELIHOOD (Para toda la réplica)
+  # Sumamos todas las filas (SNPs) para cada columna (combinación de D y s)
+  ll_sums <- colSums(ll_matrix, na.rm = TRUE)
   
-  # A) CÁLCULO COMPOSITE LIKELIHOOD (Para toda la réplica junta)
-  composite_surface <- full_data %>%
-    group_by(D, s) %>%
-    summarise(LL_sum = sum(LL, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Group = group_name, Replica_ID = rep_id)
+  # Encontrar el nombre de la columna que dio la suma más alta
+  best_col <- names(which.max(ll_sums))
+  best_LL_sum <- max(ll_sums, na.rm = TRUE)
   
-  # B) EXTRACCIÓN SINGLE-SNP MLE (El máximo absoluto de cada archivo individual)
-  single_snp_mle <- full_data %>%
-    group_by(SNP_ID) %>%
-    # Nos quedamos con la fila que tenga el LL más alto para este SNP
-    slice_max(order_by = LL, n = 1, with_ties = FALSE) %>%
-    ungroup() %>%
-    mutate(Group = group_name, Replica_ID = rep_id)
+  # Extraer D y s del nombre de la columna (ej. "D_0.01_s_0.05")
+  best_D <- as.numeric(str_extract(best_col, "(?<=D_)[0-9.eE+-]+"))
+  best_s <- as.numeric(str_extract(best_col, "(?<=s_)[0-9.eE+-]+"))
   
-  # Devolvemos ambos en forma de lista
-  return(list(composite = composite_surface, singles = single_snp_mle))
+  composite_mle <- data.frame(
+    Replica_ID = rep_id,
+    D = best_D,
+    s = best_s,
+    LL_sum = best_LL_sum
+  )
+  
+  # B) EXTRACCIÓN SINGLE-SNP MLE (Opcional para el Gráfico C)
+  # Identificamos la mejor columna para cada fila individualmente
+  max_idx <- max.col(ll_matrix, ties.method = "first")
+  best_cols_snps <- colnames(ll_matrix)[max_idx]
+  
+  single_snp_mle <- data.frame(
+    SNP_ID = d$SNP,
+    Replica_ID = rep_id,
+    D = as.numeric(str_extract(best_cols_snps, "(?<=D_)[0-9.eE+-]+")),
+    s = as.numeric(str_extract(best_cols_snps, "(?<=s_)[0-9.eE+-]+")),
+    LL = apply(ll_matrix, 1, max, na.rm = TRUE)
+  )
+  
+  return(list(composite = composite_mle, singles = single_snp_mle))
 }
 
-print("Calculating Composite Likelihoods & Extracting Single-SNP MLEs...")
-
-# Iteramos sobre las réplicas
-group_summaries <- lapply(names(file_groups), function(id) {
-  process_group(file_groups[[id]], id)
+# Procesar todos los archivos de la lista
+results_list <- lapply(seq_along(file_list), function(i) {
+  process_file(file_list[i], replica_ids[i])
 })
 
-# Como ahora es una lista doble, separamos y unimos los dataframes correspondientes
-combined_data <- bind_rows(lapply(group_summaries, `[[`, "composite"))
-all_singles_mle <- bind_rows(lapply(group_summaries, `[[`, "singles"))
+# Unir resultados en DataFrames
+mle_per_replica <- bind_rows(lapply(results_list, `[[`, "composite"))
+all_singles_mle <- bind_rows(lapply(results_list, `[[`, "singles"))
 
-if(nrow(combined_data) == 0) stop("No valid data could be loaded.")
-
-# ==========================================
-# 4. Extracción de Máximos (MLE por Réplica)
-# ==========================================
-print("Extrayendo MLE (Maximum Likelihood Estimate) por cada réplica...")
-
-# Para cada réplica, buscamos la fila exacta que tiene el LL_sum más alto
-mle_per_replica <- combined_data %>%
-  group_by(Replica_ID) %>%
-  slice_max(order_by = LL_sum, n = 1, with_ties = FALSE) %>%
-  ungroup()
-
-print(paste("Se extrajeron", nrow(mle_per_replica), "puntos máximos (uno por simulación)."))
+actual_groups <- nrow(mle_per_replica)
+print(paste("Se extrajeron", actual_groups, "puntos máximos (uno por archivo)."))
 
 # ==========================================
 # 5. Generación de Gráficos de Distribución
@@ -177,13 +144,16 @@ p_dist_s <- ggplot(mle_per_replica, aes(x = "MLE Estimates", y = s)) +
 
 # --- GRÁFICO C: Diagnóstico de SNPs Individuales ---
 total_snps <- nrow(all_singles_mle)
+margen_s <- 0.05
 
 p_diag_snps <- ggplot(all_singles_mle, aes(x = s, y = LL)) +
   geom_jitter(aes(fill = as.factor(Replica_ID)), width = 0.002, size = 2.5, shape = 21, color = "black", alpha = 0.6) +
   geom_vline(xintercept = s_value, linetype = "dashed", color = "red", linewidth = 1) +
+  # Agregamos el zoom aquí:
+  coord_cartesian(xlim = c(s_value - margen_s, s_value + margen_s)) +
   labs(
     title = "Single-Locus MLE Diagnostics: LL vs Inferred Selection (s)",
-    subtitle = paste0("Showing max Likelihood points for ", total_snps, " individual SNPs across all replicas.\nDashed line = Theoretical s (", s_value, ")"),
+    subtitle = paste0("Zoom cerca del valor teórico. Límite: +/- ", margen_s),
     x = "Inferred Selection Coefficient (s)",
     y = "Maximum Log-Likelihood (LL)",
     fill = "Replica ID"
@@ -194,13 +164,10 @@ p_diag_snps <- ggplot(all_singles_mle, aes(x = s, y = LL)) +
 # ==========================================
 # 6. Guardado de Resultados
 # ==========================================
-
-# Definimos el nombre PRIMERO
 clean_filename <- paste0(prefix, "_Performance_Mig_", m_value, "_Sel_", s_value)
 
-# Guardamos los 3 gráficos
-ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_D.png")), 
-       plot = p_dist_D, width = 6, height = 6)
+#ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_D.png")), 
+#       plot = p_dist_D, width = 6, height = 6)
 
 ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_s.png")), 
        plot = p_dist_s, width = 6, height = 6)

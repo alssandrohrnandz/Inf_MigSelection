@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/job_%A_%a.out
 #SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-280           
+#SBATCH --array=1-101            
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -15,12 +15,12 @@ module load slim/5.1
 
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
-MIG_VALUES=(0.0 0.01 0.05 0.1) #Valores de migracion que tenemos
-SEL_VALUES=(0.1 0.05 0.01 0.005 0.001 0.0005 0.0001)
+MIG_VALUES=(0.00)
+SEL_VALUES=(0.05 0.01 0.005 0.001 0.0005 0.0001 0.00005 0.00001 0.000005 0.000001)
  ## TODO: Modificado para agregar variacion en la seleccion
 REPLICAS_PER_VAL=10
 
-
+# Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
 NUM_SEL=${#SEL_VALUES[@]} #Valores de seleccion que tenemos
 IDX_MIG=$(( $IDX / $NUM_SEL )) 
@@ -30,6 +30,7 @@ CURRENT_SEL=${SEL_VALUES[$IDX_SEL]}
 
 REAL_REP=$(( ($SLURM_ARRAY_TASK_ID - 1) % $REPLICAS_PER_VAL + 1 ))
 
+# === DEBUG INFO ===
 echo "Job ID: $SLURM_ARRAY_TASK_ID"
 echo "  -> Migración [$IDX_MIG]: $CURRENT_MIG"
 echo "  -> Selección [$IDX_SEL]: $CURRENT_SEL"
@@ -39,7 +40,7 @@ START_TIME=$(date +%s)
 TASK_ID=$SLURM_ARRAY_TASK_ID
 echo "Iniciando Job ID: $TASK_ID en $(hostname)"
 
-
+# Validación de seguridad 
 if [ -z "$CURRENT_MIG" ] || [ -z "$CURRENT_SEL" ]; then
     echo "Error: Indices fuera de rango. Revisa --array vs Arrays de valores."
     exit 1
@@ -55,44 +56,46 @@ ACCION=${2:-completo}
 
 echo "--> Mode: $MODO | Action: $ACCION"
 
-
-SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG -d Sel_V=$CURRENT_SEL" 
+# Definiendo argumentos de SLiM
+SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG -d Sel_V=$SEL_VALUES" 
 
 FILES_TO_PROCESS=()
 
+# === 3. Ejecución de SLiM ===
 
-
+# --- MODO CONTINUO ---
 if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
 
+    # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Continuous/subsets"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_LL"
 
     FILES_TO_PROCESS+=(
-        "C_FULL_seleccion_m1" #modificado
+        "C_FULL_seleccion_m2"
         "C_FULL_neutros_m1"
         "C_aDNA_scattered_neutros_m1"
         "C_aDNA_scattered_seleccion_m2"
     )
     if [[ "$ACCION" != "solo_analisis" ]]; then
         echo "    Ejecutando SLiM: Continuous Space..."
-        slim $SLIM_ARGS "${DIR_BASE}/scripts/Continuous_Space_Inference/Continuous_Space.slim"
+        #slim $SLIM_ARGS "${DIR_BASE}/scripts/Continuous_Space_Inference/Continuous_Space.slim"
     else
         echo "    SALTANDO SLiM (Continuous Space) - Se usarán archivos existentes."
     fi
 fi
 
-
+# --- MODO DISCRETO ---
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
 
-
+    # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
     ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
     FILES_TO_PROCESS+=(
-        "D_FULL_neutros_m1"
-        "D_FULL_seleccion_m2" 
+        "D_FULL_seleccion_m1"
+        #"D_FULL_neutros_m1" 
         #"D_aDNA_scattered_neutros_m1"
         #"D_aDNA_scattered_seleccion_m2"
     )
@@ -105,18 +108,18 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     else 
         
         echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
-        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space.slim"
+        #slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
         
     fi
 fi
 
-
+# Verificación de seguridad
 if [ ${#FILES_TO_PROCESS[@]} -eq 0 ]; then
     echo "Error: Modo desconocido '$MODO'. Usa: continuo, discreto o ambos."
     exit 1
 fi
 
-
+# === 4. Análisis en R (Dinámico) ===
 echo "--> Iniciando extracción y análisis en R..."
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
@@ -124,10 +127,10 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
     if [[ "$PREFIJO" == "C_"* ]]; then
         BASE_PATH_TYPE="results_Continuous"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Exploracion_Estocastica.R"
     else
         BASE_PATH_TYPE="results_Discrete"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations_test.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Exploracion_Estocastica.R"
     fi
     
     CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim"
@@ -137,23 +140,15 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
     SUBSET_OUTPUT="${CURRENT_SUBSET_DIR}/subset_${PREFIJO}_${TASK_ID}.txt"
     
-  
+    # Verificación y Extracción (AWK)
     if [ -f "${SLIM_OUTPUT}" ]; then
         
-        if [[ "$PREFIJO" == *"m1"* ]]; then
-            echo "    [Subsampling] Seleccionando N SNPs neutros al azar..."
-            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq  > "${SUBSET_OUTPUT}" #T
-        else
-            echo "    [Full] Conservando todas las mutaciones bajo selección..."
-            awk -F "," 'NR>1 {print $2}' "${SLIM_OUTPUT}" | sort | uniq > "${SUBSET_OUTPUT}"
-        fi
-        
-
+        # Ejecutar R
         if [ -s "${SUBSET_OUTPUT}" ]; then
             echo "    [${PREFIJO}] Analizando en R..."
             
-
-            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}"
+            # CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
+            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_SEL}"
             
         else
             echo "    ALERTA: El subset para ${PREFIJO} quedó vacío."
@@ -164,7 +159,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     fi
 done
 
-
+# === 5. Finalizar ===
 END_TIME=$(date +%s)
 DURATION=$((END_TIME - START_TIME))
 echo "Job ${TASK_ID} finalizado."

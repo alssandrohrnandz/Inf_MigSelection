@@ -1,12 +1,12 @@
 initialize() {
 	//initializeSex("A"); 
-	defineConstant("SubpopSize", 1000);
+	defineConstant("SubpopSize", 2000);
 	if (!exists("MIG")) 
 		defineConstant("MIG",0.05);
 	defineConstant("Migration", MIG);
 	defineConstant("pop", 10);
 	if (!exists("id_replica"))
-		defineConstant("id_replica", 1);
+		defineConstant("id_replica", 10);
 	if (!exists("Sel_V"))
 		defineConstant("Sel_V",0.01);
 	defineConstant("matrix_size", pop*pop);
@@ -16,11 +16,11 @@ initialize() {
 	initializeMutationType("m1", 0.5, "f", 0.0);
 	initializeMutationType("m2", 0.5, "f", Sel_V); 
 	
-	initializeGenomicElementType("g1", c(m1,m2), c(0.99, 0.01)); 
+	initializeGenomicElementType("g1", c(m1,m2), c(0.95, 0.05)); 
 	
 	rec_ends = NULL;
 	rec_rates = NULL;
-	for (index in 1:100) {
+	for (index in 1:10) {
 		start = (index - 1)*100;
 		end = start + 99;
 		initializeGenomicElement(g1, start, end);
@@ -64,16 +64,16 @@ initialize() {
 	writeFile(OUTPUT_PATH + "D_FULL_seleccion_m2_" + id_replica + ".csv",
 		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	// aDNA Neutros
-	writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
-		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	//writeFile(OUTPUT_PATH + "D_aDNA_scattered_neutros_m1_" + id_replica + ".csv",
+	//	"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 	
 	// aDNA Selección
-	writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
-		"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	//writeFile(OUTPUT_PATH + "D_aDNA_scattered_seleccion_m2_" + id_replica + ".csv",
+	//	"Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
 }
 
 // Muestreo de la generación 600 a la 1000
-600:1000 late() {
+1:500 late() {
 	
 	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle);
 	n = asInteger(sqrt(matrix_size));

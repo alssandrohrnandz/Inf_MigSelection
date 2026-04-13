@@ -11,6 +11,12 @@ task_id     <- args[3]
 model_name  <- args[4]
 output_dir  <- args[5]
 
+#Prueba
+#freq_file   <- "data/results_Discrete/outputs_slim/D_FULL_seleccion_m1_1.csv"
+#subset_file <- "data/results_Discrete/subsets/subset_D_FULL_seleccion_m1_1.txt"
+#task_id     <- 1
+#model_name  <- "D_FULL_seleccion_m1"
+#output_dir  <- "data/results_Discrete/outputs_LL"
 
 if(length(args) < 4) {
   stop("Faltan argumentos. Se requieren: freq_file, subset_file, task_id, model_name")
@@ -31,7 +37,7 @@ diffusion2D <- function(t, conc, par) {
   return(list(as.vector(dConc)))
 }
 
-GRID_SIZE <- 10
+GRID_SIZE <- 5
 dy <- dx <- 1
 n <- GRID_SIZE
 
@@ -39,13 +45,21 @@ s<-0.0
 d <- 2*s # Parametrización
 
 MAX_STEPS <- 10000
-MIN_GENERATIONS <- 2
-N_eff <- 1000
+MIN_GENERATIONS <- 1
+N_eff <- 10000
 
 # parámetros a buscar TODO:EDITAR ESTO PORQUE PUEDE ESTAR MAL
-DifussionValuesToCheck <- sort(unique(c(0.0000000001)))
-SelectionValuesToCheck <- sort(unique(c(-0.5,-0.1,-0.05,-0.01,-0.005,-0.001,0,0.001,0.005,0.05,0.01,0.5,0.1,0.25,0.025,-0.025,-0.25,-1,1)))
-
+DifussionValuesToCheck <- c(0.0000000001) #sort(unique(c(0.0001,0.0005,0.001,0.005,0.01,0.05,0.1,0.5,1)))
+SelectionValuesToCheck <- sort(unique(c(
+  -0.0001,-0.0005,-0.00001,-0.00005,-0.000001,-0.000005,
+  0.0001,0.0005,0.00001,0.00005,0.000001,0.000005,
+  -0.5,-0.1,-0.05,-0.01,-0.005,-0.001,0,0.001,0.005,0.05,0.01,0.5,0.1,0.25,0.025,-0.025,
+  -0.25,-1,1,0.002,0.02,0.025,0.0025
+  )
+  )
+  )
+print(DifussionValuesToCheck)
+print(SelectionValuesToCheck)
 
 # lectura del archivo
 freq_data_raw <- read.csv(freq_file, header=TRUE, stringsAsFactors=FALSE)
@@ -85,6 +99,9 @@ freq_data$ChrOBS <- freq_data$Chr_Tot
 
 # === 5. Bucle Principal ===
 
+# Inicializar lista ANTES del loop para acumular los resultados de todos los SNPs
+all_results_list <- list() 
+
 for (snp_actual in snps_to_analyze) {
   
   df_snp <- freq_data[freq_data$MutationID == snp_actual, ]
@@ -101,21 +118,23 @@ for (snp_actual in snps_to_analyze) {
   AlleleOriginAge <- df_snp$Generation[First_OcurrenceData]
 
   unique_generations <- sort(unique(df_snp$Generation))
-  if(length(unique_generations) < MIN_GENERATIONS) {
-    # warning(paste("SNP", snp_actual, "pocas generaciones. Skip."))
-    next 
+  
+  # --- MODIFICACIÓN 1: Detectar si solo hay 1 generación ---
+  FlagExtraRun <- 0
+  if (length(unique_generations) == 1) {
+    FlagExtraRun <- 1
+  } else if (length(unique_generations) < MIN_GENERATIONS) {
+    next # Salta SNPs que tienen más de 1 pero menos que MIN_GENERATIONS
   }
   
   # Matriz Inicial
   Conc0 <- matrix(0, nrow=n, ncol=n)
   
-  # Llenamos condiciones iniciales usando todos los puntos donde aparece por primera vez
   origin_data <- df_snp[df_snp$Generation == AlleleOriginAge & df_snp$Frequency > 0, ]
   
   for(k in 1:nrow(origin_data)) {
     ox <- origin_data$X[k]
     oy <- origin_data$Y[k]
-    # Validación de límites de array por si acaso
     if(ox >= 1 && ox <= n && oy >= 1 && oy <= n) {
         Conc0[ox, oy] <- origin_data$Frequency[k]
     }
@@ -127,8 +146,15 @@ for (snp_actual in snps_to_analyze) {
   results$LL <- NA
   
   TimesToTest <- sort(unique(df_snp$Generation))
+  
+  # Si solo hay 1 generación, añadimos una generación extra para evaluar ceros
+  if (FlagExtraRun == 1) {
+     # Agregamos 1 generación extra al final
+     TimesToTest <- c(TimesToTest, max(TimesToTest) + 1)
+  }
+  
   times_run <- min(TimesToTest):max(TimesToTest)
-
+  
   for (i in 1:nrow(results)) {
     
     D_val <- results$D[i]
@@ -138,37 +164,25 @@ for (snp_actual in snps_to_analyze) {
 
     ST3 <- ode.2D(
       y      = Conc0,
-      times  = times_run,
+      times  = times_run + 1,
       func   = diffusion2D,
       parms  = pars,
       dimens = c(n, n),
       method = rkMethod("rk45ck"),
-      atol   = 1e-10, ##TODO: MODIFICACION HECHA
+      atol   = 1e-10, 
       rtol   = 1e-10,
       maxsteps = 1e5
     )
     
-    #elimnar la columnas "time"
     ST3_mat <- as.matrix(ST3[,-1])
-    
     ll <- 0
     
-
-    # if(i == 1) print(paste("Max freq en matriz:", max(ST3_mat)))
-
+    # 1. Cálculo de Likelihood para datos reales
     for(j in 1:nrow(df_snp)) {
-
       obs_freq <- df_snp$Frequency[j]
-      if (obs_freq < 0.02 || obs_freq > 0.98) {
-        next # Saltamos al siguiente punto geográfico/temporal
-      }
-
       t_abs <- df_snp$Generation[j]
       time_idx <- match(t_abs, times_run)
       
-      #if(is.na(time_idx)) next 
-      
-      # Cálculo de deriva
       t_elapsed <- t_abs - AlleleOriginAge
       if (t_elapsed < 1) t_elapsed <- 0.5 
       rho_val <- 1 - exp(-t_elapsed / (2 * N_eff))
@@ -176,21 +190,14 @@ for (snp_actual in snps_to_analyze) {
 
       xg <- df_snp$X[j]
       yg <- df_snp$Y[j]
-      
-      spatial_idx <- (yg - 1) * n + xg #indexacion por ver 
+      spatial_idx <- (yg - 1) * n + xg 
       
       if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
 
       pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
-      
-      # Piso mínimo (Evita log(0))
-      piso_minimo <- 1 / (2 * N_eff)
+      piso_minimo <- 1 / 1000000 
       pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
       
-     
-      # Si pred_freq siempre es 0.0005, el modelo "no ve" el alelo en esa coordenada
-      # if(i==1 && j < 5) print(paste("Gen:", t_abs, "X:", xg, "Y:", yg, "Raw:", pred_freq_raw, "Final:", pred_freq))
-
       ll <- ll + dbetabinom(
         x    = df_snp$Count[j],
         size = df_snp$Chr_Tot[j],
@@ -199,16 +206,75 @@ for (snp_actual in snps_to_analyze) {
         log  = TRUE
       )
     }
+    
+    # 2. Cálculo de Likelihood para la generación extra (Matriz = 0)
+    if (FlagExtraRun == 1){
+      # Tomamos el tiempo extra que agregamos
+      t_abs_extra <- max(TimesToTest)
+      time_idx_extra <- match(t_abs_extra, times_run)
+      
+      t_elapsed <- t_abs_extra - AlleleOriginAge
+      if (t_elapsed < 1) t_elapsed <- 0.5 
+      rho_val <- 1 - exp(-t_elapsed / (2 * N_eff))
+      rho_val <- max(rho_val, 1e-6)
+
+      # Calculamos un tamaño de muestra representativo para esta población en "0"
+      rep_chr_tot <- round(mean(df_snp$Chr_Tot, na.rm=TRUE))
+      if(is.nan(rep_chr_tot) || rep_chr_tot < 1) rep_chr_tot <- 10 
+      
+      for (x_temp in 1:n){
+         for (y_temp in 1:n){
+            spatial_idx <- (y_temp - 1) * n + x_temp 
+            
+            if(spatial_idx < 1 || spatial_idx > ncol(ST3_mat)) next
+
+            pred_freq_raw <- ST3_mat[time_idx_extra, spatial_idx]
+            piso_minimo <- 1 / 1000000
+            pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
+            
+            # Penaliza duramente si el modelo predice > 0
+            ll <- ll + dbetabinom(
+              x    = 0,
+              size = rep_chr_tot, 
+              prob = pred_freq,
+              rho  = rho_val,
+              log  = TRUE
+            )
+         }
+      }
+    }
+    
+    # Guardamos el LL final de esta combinación de parámetros
     results$LL[i] <- ll
   }
 
-  # Guardar Resultados <- segun chatgtp pero hay que modificar el nombre
+  # --- MODIFICACIÓN 2: Reestructurar los resultados (Filas = SNP, Columnas = Parámetros) ---
   
-  output_filename <- paste0("Analysis_", model_name,"_" ,task_id,"_SNP_", snp_actual, ".txt")
+  # Crear nombres de columnas descriptivos, ej: "D_0.01_s_0.05"
+  col_names <- paste0("D_", results$D, "_s_", results$s)
+  
+  # Crear una fila nueva para este SNP
+  snp_row <- data.frame(SNP = snp_actual, stringsAsFactors = FALSE)
+  
+  # Asignar los valores de LL como columnas
+  snp_row[col_names] <- results$LL
+  
+  # Guardarlo en la lista maestra
+  all_results_list[[length(all_results_list) + 1]] <- snp_row
+  print(paste("Procesado SNP:", snp_actual))
+}
+
+# --- MODIFICACIÓN 3: Guardar TODO en un solo archivo por task_id ---
+if(length(all_results_list) > 0) {
+  # Unimos todas las filas
+  final_results <- do.call(rbind, all_results_list)
+  
+  output_filename <- paste0("Analysis_", model_name, "_TaskID_", task_id, "_All_SNPs.txt")
   output_path <- file.path(output_dir, output_filename)
   
-  best_params <- results[which.max(results$LL),]
-  print(paste("Guardando:", output_path, "Max LL:", best_params$LL))
-  
-  write.table(results, file=output_path, row.names=FALSE, quote = FALSE)
+  print(paste("Guardando archivo acumulado:", output_path))
+  # Se guarda separado por tabulaciones (.tsv pero con extension .txt)
+  write.table(final_results, file=output_path, row.names=FALSE, quote = FALSE, sep="\t")
+} else {
+  print("No se procesaron SNPs que cumplieran los criterios.")
 }
