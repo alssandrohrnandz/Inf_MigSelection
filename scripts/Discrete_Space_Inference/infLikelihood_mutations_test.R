@@ -34,6 +34,31 @@ diffusion2D <- function(t, conc, par) {
   return(list(as.vector(dConc)))
 }
 
+dbetabinom_spikes <- function(x, size, prob, rho, log = FALSE) {
+  
+  # Probabilidades de absorción (spikes)
+  # Basado en Tataru et al. 2015: aproximación por deriva dominante
+  pi_0 <- (1 - prob) * rho   # masa en k = 0
+  pi_1 <- prob * rho          # masa en k = N
+  pi_mid <- 1 - pi_0 - pi_1  # masa en la beta-binomial central
+  
+  # Seguridad: pi_mid debe ser positivo
+  pi_mid <- max(pi_mid, 1e-10)
+  
+  # Densidad de la beta-binomial en la parte continua
+  ll_bb <- dbetabinom(x = x, size = size, prob = prob, rho = rho, log = FALSE)
+  
+  # Densidad total con spikes
+  dens <- pi_mid * ll_bb
+  dens[x == 0]    <- dens[x == 0]    + pi_0
+  dens[x == size] <- dens[x == size] + pi_1
+  
+  # Clamp numérico
+  dens <- pmax(dens, 1e-300)
+  
+  if (log) return(log(dens)) else return(dens)
+}
+
 GRID_SIZE <- 10
 dy <- dx <- 1
 n <- GRID_SIZE
@@ -87,6 +112,7 @@ if (file.exists(subset_file) && file.info(subset_file)$size > 0) {
 
 all_results_legacy <- list()
 all_results_ares <- list()
+all_results_spikes <- list()
 param_grid <- expand.grid(D=DifussionValuesToCheck, s=SelectionValuesToCheck)
 
 # === BUCLE PRINCIPAL ===
@@ -145,6 +171,7 @@ for (snp_actual in snps_to_analyze) {
   
   ll_legacy_vals <- numeric(nrow(param_grid))
   ll_ares_vals <- numeric(nrow(param_grid))
+  ll_spikes_vals <- numeric(nrow(param_grid))
   
   cat("Evaluando SNP:", snp_actual, "- Ventana temporal:", length(times_run), "generaciones.\n")
   
@@ -181,11 +208,13 @@ for (snp_actual in snps_to_analyze) {
     
     ll_legacy_vals[i] <- sum(dbinom(x = counts_vec, size = totals_vec, prob = pred_freq_vec, log = TRUE))
     ll_ares_vals[i] <- sum(dbetabinom(x = counts_vec, size = totals_vec, prob = pred_freq_vec, rho = rho_ares_vec, log = TRUE))
+    ll_spikes_vals[i] <- sum(dbetabinom_spikes(x= counts_vec, size = totals_vec, prob = pred_freq_vec, rho= rho_ares_vec, log= TRUE))
   }
   
   col_names <- paste0("D_", param_grid$D, "_s_", param_grid$s)
   all_results_legacy[[length(all_results_legacy) + 1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_legacy_vals)), c("SNP", col_names))
   all_results_ares[[length(all_results_ares) + 1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_ares_vals)), c("SNP", col_names))
+  all_results_spikes[[length(all_results_spikes)+1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_spikes_vals)), c("SNP", col_names))
 }
 
 # --- GUARDADO ---
@@ -205,6 +234,15 @@ if(length(all_results_ares) > 0) {
   print(paste("Guardado Grid Ares:", out_ares))
 } else {
   print("No se procesaron SNPs para Ares.")
+}
+
+if(length(all_results_spikes) > 0){
+  df_spikes <- do.call(rbind, all_results_spikes)
+  out_spikes <- file.path(output_dir, paste0("TRON_SPIKES_Grid_TaskID", task_id,"_", model_name,".txt"))
+  write.table(df_spikes, file=out_spikes, row.names=FALSE, quote= FALSE, sep="\t")
+  print(paste("Guardado Grid Spikes:", out_spikes))
+} else {
+  print ("No se procesaro SNPs para Spikes")
 }
 
 

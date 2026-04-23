@@ -73,6 +73,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
         #"Analysis_D_FULL_seleccion_m1" # CORRECCIÓN 2: Cambiado de C_ a D_
         "TRON_ARES_Grid_TaskID"
         "TRON_LEGACY_Grid_TaskID"
+        "TRON_SPIKES_Grid_TaskID"
     )
 fi
 

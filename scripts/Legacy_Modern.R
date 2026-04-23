@@ -65,16 +65,19 @@ process_file <- function(f, rep_id, method_name) {
 # ==========================================
 print("Buscando y procesando archivos TRON...")
 
-methods_to_find <- c("TRON_LEGACY_Grid", "TRON_ARES_Grid")
+methods_to_find <- c("TRON_LEGACY_Grid", "TRON_ARES_Grid", "TRON_SPIKES_Grid")
 all_composite <- list()
 all_singles <- list()
 
 for (method in methods_to_find) {
-  # Buscamos archivos que coincidan con el método y el regex de TaskIDs
-  pattern_to_search <- paste0("^", method, "_TaskID_", task_id_reg, "_D_FULL_neutros_m1.txt")
+  # MODIFICACIÓN: Usamos .*\\.txt$ para que capture tanto archivos 'neutros' como 'seleccion'
+  pattern_to_search <- paste0("^", method, "_TaskID_", task_id_reg, "_.*\\.txt$")
+  
   file_list <- list.files(path = input_dir, pattern = pattern_to_search, full.names = TRUE)
   print(file_list)
+  
   if (length(file_list) > 0) {
+    # El resto se mantiene exactamente igual
     replica_ids <- str_extract(basename(file_list), "(?<=TaskID_)[0-9A-Za-z_]+(?=_)") 
     
     for (i in seq_along(file_list)) {
@@ -83,7 +86,7 @@ for (method in methods_to_find) {
       all_singles[[length(all_singles) + 1]] <- res$singles
     }
   } else {
-    print(paste("Advertencia: No se encontraron archivos para", method))
+    print(paste("Advertencia: No se encontraron archivos para", method, "con el patrón:", pattern_to_search))
   }
 }
 
@@ -130,7 +133,8 @@ print(task_groups)
 # ==========================================
 color_theoric <- "#d7191c"
 color_legacy <- "#3498db" 
-color_ares <- "#2ecc71"   
+color_ares <- "#2ecc71"
+color_spikes <- "#C77CFF"   
 margen_s <- 0.05
 
 for (current_group in task_groups) {
@@ -152,7 +156,7 @@ for (current_group in task_groups) {
     trans = pseudo_log_trans(sigma = 1e-10, base = 10),
     breaks = c(1e-10, 1e-08, 1e-06, 1e-04, 0.01, 1)) +
     annotation_logticks(sides = "l") +
-    scale_fill_manual(values = c("TRON_LEGACY" = color_legacy, "TRON_ARES" = color_ares)) +
+    scale_fill_manual(values = c("TRON_LEGACY" = color_legacy, "TRON_ARES" = color_ares, "TRON_SPIKES"= color_spikes)) +
     scale_color_manual(name = "", values = c("Theoretical" = color_theoric), 
                        labels = paste0("Theoric D = ", m_value)) +
     labs(
@@ -169,7 +173,7 @@ for (current_group in task_groups) {
     geom_boxplot(width = 0.2, fill = "white", color = "black", outlier.shape = NA) +
     geom_jitter(width = 0.1, height = 0, size = 3, alpha = 0.7, color = "black", shape = 21) +
     geom_hline(aes(yintercept = s_value, color = "Theoretical"), linetype = "dashed", linewidth = 1) +
-    scale_fill_manual(values = c("TRON_LEGACY" = color_legacy, "TRON_ARES" = color_ares)) +
+    scale_fill_manual(values = c("TRON_LEGACY" = color_legacy, "TRON_ARES" = color_ares, "TRON_SPIKES"= color_spikes)) +
     scale_color_manual(name = "", values = c("Theoretical" = color_theoric), 
                        labels = paste0("Theoric s = ", s_value)) +
     labs(
