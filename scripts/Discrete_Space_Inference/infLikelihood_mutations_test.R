@@ -198,7 +198,7 @@ for (snp_actual in snps_to_analyze) {
       
       pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
       pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
-      
+      #AlleleOriginAge es la generación en la que aparece por primera vez el alelo
       t_elapsed <- max(t_abs - AlleleOriginAge, 0.5)
       rho_val <- max(1 - exp(-t_elapsed / (2 * N_eff)), 1e-6)
       

@@ -78,7 +78,7 @@ df_lifespans <- df_raw %>%
 
 # === 3. VISUALIZACIÓN ===
 # Para ver el efecto de la selección, filtramos los datos no neutrales
-df_plot_seleccion <- df_plot_seleccion %>%
+df_plot_seleccion <- df_lifespans %>%
   filter(!is.na(True_Mig))
 
 plot_lifespan <- ggplot(df_plot_seleccion, aes(x = True_Sel, y = Mean_Lifespan)) +
