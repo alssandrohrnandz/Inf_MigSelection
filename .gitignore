@@ -1,4 +1,5 @@
 .Rproj.user
+.vscode/
 .Rhistory
 .RData
 .Ruserdata
@@ -21,3 +22,4 @@ figures/
 **.csv
 **.pdf
 **.png
+**.txtdf_raw.rds
