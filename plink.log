@@ -1,0 +1,21 @@
+PLINK v1.90b6.26 64-bit (2 Apr 2022)
+Options in effect:
+  --bfile chr_frequencies/1240k_filtered_chr5
+  --freq
+  --within AADNA_data/Populations_Cleaned.pop
+
+Hostname: node11.cluster
+Working directory: /mnt/data/dortega/hlopezh/Inf_MigSelection
+Start time: Wed May  6 11:39:03 2026
+
+Random number seed: 1778089143
+257705 MB RAM detected; reserving 128852 MB for main workspace.
+65106 variants loaded from .bim file.
+3956 people (2182 males, 1709 females, 65 ambiguous) loaded from .fam.
+Ambiguous sex IDs written to plink.nosex .
+3956 phenotype values loaded from .fam.
+Warning: Ignoring phenotypes of missing-sex samples.  If you don't want those
+phenotypes to be ignored, use the --allow-no-sex flag.
+Error: Failed to open AADNA_data/Populations_Cleaned.pop.
+
+End time: Wed May  6 11:39:03 2026

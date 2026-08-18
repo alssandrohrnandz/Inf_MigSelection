@@ -1,0 +1,9 @@
+genotypename:	 AADNA_data/v66.1240K.aadr.PUB.tgeno
+snpname:	 AADNA_data/v66.1240K.aadr.PUB.snp
+indivname:	 AADNA_data/v66.1240K.aadr.PUB.ind
+genotypeformat: PACKEDPED
+outputformat:	PED
+genotypeoutname:	AADNA_data/1240k.ped
+snpoutname:	AADNA_data/1240k.map
+indivoutname:	AADNA_data/1240k.pedind
+familynames:	NO

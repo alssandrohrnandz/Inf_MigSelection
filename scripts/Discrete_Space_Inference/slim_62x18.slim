@@ -1,0 +1,166 @@
+initialize() {
+	// ========== PARÁMETROS PRINCIPALES ==========
+	defineConstant("METAPOP_COLS", 31);  // Dimensión X
+	defineConstant("METAPOP_ROWS", 9);  // Dimensión Y
+	defineConstant("SubpopSize", 1000);
+	
+	// Parámetros externos (pueden ser pasados desde línea de comandos)
+	if (!exists("MIG")) 
+		defineConstant("MIG", 0.05);
+	defineConstant("Migration", MIG);
+	
+	if (!exists("id_replica"))
+		defineConstant("id_replica", 1);
+	
+	if (!exists("Sel_V"))
+		defineConstant("Sel_V", 0.01);
+	defineConstant("Sel_Coeff", Sel_V);
+	
+	// Parámetros genómicos
+	defineConstant("MU", 1.2e-8);
+	defineConstant("REC_RATE", 1e-8);
+	defineConstant("HOTSPOT_REC", 0.5);
+	defineConstant("SEG_LENGTH", 100);  // Longitud de cada segmento
+	defineConstant("NUM_SEGMENTS", 10);
+	defineConstant("GENOME_LENGTH", SEG_LENGTH * NUM_SEGMENTS);
+	
+	// Output
+	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/");
+	defineConstant("MATRIX_SIZE", METAPOP_COLS * METAPOP_ROWS);
+	
+	// ========== CONFIGURACIÓN MUTACIONES ==========
+	initializeMutationRate(MU);
+	initializeMutationType("m1", 0.5, "f", 0.0);      // Neutral
+	initializeMutationType("m2", 0.5, "f", Sel_Coeff); // Selection
+	
+	initializeGenomicElementType("g1", c(m1, m2), c(0.95, 0.05));
+	
+	// ========== CONFIGURACIÓN RECOMBINACIÓN ==========
+	// Segmentos con recombinación baja, separados por hotspots
+	rec_ends = NULL;
+	rec_rates = NULL;
+	for (index in 1:NUM_SEGMENTS) {
+		start = (index - 1) * SEG_LENGTH;
+		end = start + SEG_LENGTH - 1;
+		initializeGenomicElement(g1, start, end);
+		rec_ends = c(rec_ends, end);
+		rec_rates = c(rec_rates, REC_RATE);
+		rec_ends = c(rec_ends, end + 1);
+		rec_rates = c(rec_rates, HOTSPOT_REC);
+	}
+	initializeRecombinationRate(rec_rates, rec_ends);
+}
+
+1 early() {
+	// ========== CONFIGURACIÓN METAPOBLACIÓN ==========
+	catn("Inicializando metapoblación: " + METAPOP_COLS + " x " + METAPOP_ROWS + 
+		" = " + MATRIX_SIZE + " poblaciones");
+	catn("Tamaño por población: " + SubpopSize);
+	catn("Total de individuos: " + (MATRIX_SIZE * SubpopSize));
+	
+	// Crear todas las subpoblaciones
+	for (i in 1:MATRIX_SIZE)
+		sim.addSubpop(i, SubpopSize);
+	
+	subpops = sim.subpopulations;
+	
+	// ========== CONFIGURACIÓN MIGRACIONES Y DISPLAY ==========
+	for (x in 1:METAPOP_COLS) {
+		for (y in 1:METAPOP_ROWS) {
+			// ID lineal (0-indexed internamente, 1-indexed para SLiM)
+			destID = (x - 1) + (y - 1) * METAPOP_COLS + 1;
+			ds = subpops[destID - 1];
+			
+			// Migración a vecinos (stepping stone 2D)
+			// Izquierda
+			if (x > 1) {
+				neighborID = (x - 2) + (y - 1) * METAPOP_COLS + 1;
+				ds.setMigrationRates(neighborID, Migration);
+			}
+			// Derecha
+			if (x < METAPOP_COLS) {
+				neighborID = x + (y - 1) * METAPOP_COLS + 1;
+				ds.setMigrationRates(neighborID, Migration);
+			}
+			// Arriba
+			if (y > 1) {
+				neighborID = (x - 1) + (y - 2) * METAPOP_COLS + 1;
+				ds.setMigrationRates(neighborID, Migration);
+			}
+			// Abajo
+			if (y < METAPOP_ROWS) {
+				neighborID = (x - 1) + y * METAPOP_COLS + 1;
+				ds.setMigrationRates(neighborID, Migration);
+			}
+			
+			// GUI: posicionar según grilla rectangular
+			xd = ((x - 1) / (METAPOP_COLS - 1)) * 0.9 + 0.05;
+			yd = ((y - 1) / (METAPOP_ROWS - 1)) * 0.9 + 0.05;
+			ds.configureDisplay(c(xd, yd), 0.4);
+		}
+	}
+	
+	catn("Metapoblación inicializada correctamente.");
+	
+	// ========== INICIALIZAR ARCHIVOS DE SALIDA ==========
+	writeFile(OUTPUT_PATH + "v2_D_FULL_neutros_m1_" + id_replica + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+	
+	writeFile(OUTPUT_PATH + "v2_D_FULL_seleccion_m2_" + id_replica + ".csv",
+		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+}
+
+// ========== MUESTREO Y GUARDADO ==========
+1:500 late() {
+	
+	if (sim.cycle % 100 == 0) 
+		catn("Generación: " + sim.cycle);
+	
+	// Procesar M2 (Selección)
+	muts_m2 = sim.mutationsOfType(m2);
+	if (size(muts_m2) > 0) {
+		lines_m2 = c();  // Vector de strings
+		for (m in muts_m2) {
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+				chr_tot = 2 * size(subpop.individuals);
+				allele_count = asInteger(round(freq * chr_tot));
+				
+				// Convertir ID lineal a coordenadas (x, y)
+				index = subpop.id - 1;
+				x_pos = (index % METAPOP_COLS) + 1;
+				y_pos = asInteger(index / METAPOP_COLS) + 1;
+				
+				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+				lines_m2 = c(lines_m2, line);
+			}
+		}
+		if (length(lines_m2) > 0) 
+			writeFile(OUTPUT_PATH + "v2_D_FULL_seleccion_m2_" + id_replica + ".csv",
+				paste(lines_m2, sep="\n"), append=T);
+	}
+	
+	// Procesar M1 (Neutral)
+	muts_m1 = sim.mutationsOfType(m1);
+	if (size(muts_m1) > 0) {
+		lines_m1 = c();  // Vector de strings
+		for (m in muts_m1) {
+			for (subpop in sim.subpopulations) {
+				freq = sim.mutationFrequencies(subpop, m);
+				chr_tot = 2 * size(subpop.individuals);
+				allele_count = asInteger(round(freq * chr_tot));
+				
+				// Convertir ID lineal a coordenadas (x, y)
+				index = subpop.id - 1;
+				x_pos = (index % METAPOP_COLS) + 1;
+				y_pos = asInteger(index / METAPOP_COLS) + 1;
+				
+				line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
+				lines_m1 = c(lines_m1, line);
+			}
+		}
+		if (length(lines_m1) > 0) 
+			writeFile(OUTPUT_PATH + "v2_D_FULL_neutros_m1_" + id_replica + ".csv",
+				paste(lines_m1, sep="\n"), append=T);
+	}
+}

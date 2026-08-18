@@ -29,8 +29,6 @@ if (model_name == "D_FULL_seleccion_m1") {
   print(paste0("Evaluando modelo neutro y mig (",current_mig,")."))
 }
 
-stop("Fin del test")
-
 # Función del modelo espacial
 diffusion2D <- function(t, conc, par) {
   Conc <- matrix(nrow = n, ncol = n, data = conc)
@@ -42,29 +40,10 @@ diffusion2D <- function(t, conc, par) {
   return(list(as.vector(dConc)))
 }
 
-dbetabinom_spikes <- function(x, size, prob, rho, log = FALSE) {
-  pi_0 <- (1 - prob) * rho
-  pi_1 <- prob * rho
-  
-  # CORRECCIÓN 1: Usar pmax() en lugar de max() para evaluación vectorizada
-  pi_mid <- pmax(1 - pi_0 - pi_1, 1e-10) 
-  
-  ll_bb <- dbetabinom(x = x, size = size, prob = prob, rho = rho, log = FALSE)
-  dens <- pi_mid * ll_bb
-  
-  # CORRECCIÓN 2: Filtrar pi_0 y pi_1 con el mismo índice lógico que dens
-  dens[x == 0] <- dens[x == 0] + pi_0[x == 0]
-  dens[x == size] <- dens[x == size] + pi_1[x == size]
-  
-  dens <- pmax(dens, 1e-300)
-  
-  if (log) return(sum(log(dens))) else return(dens)
-}
-
 GRID_SIZE <- 10
 dy <- dx <- 1
 n <- GRID_SIZE
-N_eff <- 1000
+
 
 if (model_name == "D_FULL_neutros_m1") {
   MAX_PADDED_GENERATIONS <- 1 
@@ -73,7 +52,7 @@ if (model_name == "D_FULL_neutros_m1") {
 }
 
 # Parámetros para el Grid Search
-exponentes_D <- -6:0
+exponentes_D <- -4:0
 valores_base <- c(1, 2.5, 5)
 DifussionValuesToCheck <- sort(unique(c(0, as.vector(outer(valores_base, 10^exponentes_D)), 0.125, 0.075)))
 DifussionValuesToCheck <- DifussionValuesToCheck[DifussionValuesToCheck <= 1]
@@ -87,7 +66,6 @@ if (model_name == "D_FULL_neutros_m1") {
   valores_pos <- valores_pos[valores_pos <= 1]
   #SelectionValuesToCheck <- sort(unique(c(-valores_pos, 0, valores_pos)))
   SelectionValuesToCheck <- sort(unique(c(0, valores_pos)))
-  DifussionValuesToCheck <- current_mig <- as.numeric(current_mig)
 }
 
 # Lectura y preparación de datos
@@ -111,67 +89,85 @@ all_results_ares <- list()
 all_results_spikes <- list()
 param_grid <- expand.grid(D=DifussionValuesToCheck, s=SelectionValuesToCheck)
 
-# === BUCLE PRINCIPAL ===
+# ============================================================
+# INFERENCIA DE D y s — SOLO MODELO BINOMIAL (simplificado)
+# ============================================================
+
 for (snp_actual in snps_to_analyze) {
-  
+
   df_snp <- freq_data[freq_data$MutationID == snp_actual, ]
-  if(nrow(df_snp) == 0 || max(df_snp$Frequency) == 0) next
-  
+  if (nrow(df_snp) == 0 || max(df_snp$Frequency) == 0) next
+
+  df_snp <- df_snp[order(df_snp$Generation, df_snp$Y, df_snp$X), ]
+
   First_OcurrenceData <- which(df_snp$Frequency > 0)[1]
-  if(is.na(First_OcurrenceData)) next
-  
+  if (is.na(First_OcurrenceData)) next
+
   AlleleOriginAge <- df_snp$Generation[First_OcurrenceData]
+  max_gen_global  <- max(tiempos_globales_muestreo)
+
+  df_snp <- df_snp[df_snp$Generation >= AlleleOriginAge, ]
   max_gen_snp <- max(df_snp$Generation)
-  max_gen_global <- max(tiempos_globales_muestreo)
-  
-  # --- ZERO-PADDING CONDICIONAL ---
-  # Solo aplicamos padding si el alelo desaparece ANTES del final de la simulación (500)
+
+  # --- ZERO-PADDING CONDICIONAL (igual que antes) ---
   if (max_gen_snp < max_gen_global) {
     print(paste("SNP", snp_actual, "desaparece antes del final de la simulación. Aplicando zero-padding hasta generación", max_gen_global))
     gens_faltantes <- tiempos_globales_muestreo[tiempos_globales_muestreo > max_gen_snp]
-    if(length(gens_faltantes) > MAX_PADDED_GENERATIONS) {
+    if (length(gens_faltantes) > MAX_PADDED_GENERATIONS) {
       gens_faltantes <- gens_faltantes[1:MAX_PADDED_GENERATIONS]
     }
-    
+
     coordenadas_historicas <- unique(df_snp[, c("X", "Y")])
     chr_tot_promedio <- max(round(mean(df_snp$Chr_Tot, na.rm = TRUE)), 10)
-    
+
     filas_ceros <- expand.grid(Generation = gens_faltantes, X = coordenadas_historicas$X, Y = coordenadas_historicas$Y)
     filas_ceros$MutationID <- snp_actual
-    filas_ceros$Frequency <- 0
-    filas_ceros$Count <- 0
-    filas_ceros$Chr_Tot <- chr_tot_promedio
-    filas_ceros$TypeMut <- NA                   
-    filas_ceros$ChrOBS <- chr_tot_promedio      
-    
+    filas_ceros$Frequency  <- 0
+    filas_ceros$Count      <- 0
+    filas_ceros$Chr_Tot    <- chr_tot_promedio
+    filas_ceros$TypeMut    <- NA
+    filas_ceros$ChrOBS     <- chr_tot_promedio
+
     filas_ceros <- filas_ceros[, colnames(df_snp)]
     df_snp <- rbind(df_snp, filas_ceros)
     df_snp <- df_snp[order(df_snp$Generation, df_snp$Y, df_snp$X), ]
   }
-  
+
   # --- CONFIGURACIÓN DE LA PDE ---
-  times_run <- min(df_snp$Generation):max(df_snp$Generation)
-  
-  # SEGURIDAD: ode.2D requiere al menos 2 puntos de tiempo distintos
-  if(length(times_run) < 2) {
+  times_run <- AlleleOriginAge:max(df_snp$Generation)
+
+  if (length(times_run) < 2) {
     cat("SNP", snp_actual, "omitido: Datos insuficientes para serie temporal (n < 2).\n")
     next
   }
-  
-  Conc0 <- matrix(0, nrow=n, ncol=n)
+
+  Conc0 <- matrix(0, nrow = n, ncol = n)
   origin_data <- df_snp[df_snp$Generation == AlleleOriginAge & df_snp$Frequency > 0, ]
-  for(k in 1:nrow(origin_data)) {
+  for (k in 1:nrow(origin_data)) {
     ox <- origin_data$X[k]; oy <- origin_data$Y[k]
-    if(ox >= 1 && ox <= n && oy >= 1 && oy <= n) Conc0[ox, oy] <- origin_data$Frequency[k]
+    if (ox >= 1 && ox <= n && oy >= 1 && oy <= n) Conc0[ox, oy] <- origin_data$Frequency[k]
   }
-  if(sum(Conc0) == 0) next
-  
+  if (sum(Conc0) == 0) next
+
+  # --- PRE-CALCULO DE INDICES (UNA sola vez por SNP, fuera del grid) ---
+  time_idx_vec    <- match(df_snp$Generation, times_run)
+  spatial_idx_vec <- (df_snp$Y - 1) * n + df_snp$X
+
+  filas_validas <- !is.na(time_idx_vec)
+  if (!all(filas_validas)) {
+    cat("SNP", snp_actual, ": se omiten", sum(!filas_validas), "filas cuya Generation no está en times_run.\n")
+  }
+
+  counts_vec <- df_snp$Count[filas_validas]
+  totals_vec <- df_snp$Chr_Tot[filas_validas]
+  idx_matrix <- cbind(time_idx_vec[filas_validas], spatial_idx_vec[filas_validas])
+
+  piso_minimo <- 1e-6
+
   ll_legacy_vals <- numeric(nrow(param_grid))
-  ll_ares_vals <- numeric(nrow(param_grid))
-  ll_spikes_vals <- numeric(nrow(param_grid))
-  
+
   cat("Evaluando SNP:", snp_actual, "- Ventana temporal:", length(times_run), "generaciones.\n")
-  
+
   for (i in 1:nrow(param_grid)) {
     D_curr <- param_grid$D[i]; s_curr <- param_grid$s[i]; d_curr <- 2 * s_curr
     
@@ -181,66 +177,34 @@ for (snp_actual in snps_to_analyze) {
     
     ST3_mat <- as.matrix(ST3[,-1])
     piso_minimo <- 1e-6 
-    
-    # Recolección vectorizada
-    counts_vec <- df_snp$Count
-    totals_vec <- df_snp$Chr_Tot
-    pred_freq_vec <- numeric(nrow(df_snp))
-    rho_ares_vec <- numeric(nrow(df_snp))
-    
-    for(j in 1:nrow(df_snp)) {
-      t_abs <- df_snp$Generation[j]
-      time_idx <- match(t_abs, times_run)
-      spatial_idx <- (df_snp$Y[j] - 1) * n + df_snp$X[j] 
-      
-      pred_freq_raw <- ST3_mat[time_idx, spatial_idx]
-      pred_freq <- max(min(pred_freq_raw, 1 - piso_minimo), piso_minimo)
-      #AlleleOriginAge es la generación en la que aparece por primera vez el alelo
-      t_elapsed <- max(t_abs - AlleleOriginAge, 0.5)
-      rho_val <- max(1 - exp(-t_elapsed / (2 * N_eff)), 1e-6)
-      
-      pred_freq_vec[j] <- pred_freq
-      rho_ares_vec[j] <- rho_val
+
+    if (any(!is.finite(ST3_mat))) {
+      ll_legacy_vals[i] <- NA
+      next
     }
-    
+
+    pred_freq_raw <- ST3_mat[idx_matrix]
+    pred_freq_vec <- pmin(pmax(pred_freq_raw, piso_minimo), 1 - piso_minimo)
+
     ll_legacy_vals[i] <- sum(dbinom(x = counts_vec, size = totals_vec, prob = pred_freq_vec, log = TRUE))
-    ll_ares_vals[i] <- sum(dbetabinom(x = counts_vec, size = totals_vec, prob = pred_freq_vec, rho = rho_ares_vec, log = TRUE))
-    ll_spikes_vals[i] <- sum(dbetabinom_spikes(x= counts_vec, size = totals_vec, prob = pred_freq_vec, rho= rho_ares_vec, log= TRUE))
   }
-  
+
   col_names <- paste0("D_", param_grid$D, "_s_", param_grid$s)
   all_results_legacy[[length(all_results_legacy) + 1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_legacy_vals)), c("SNP", col_names))
-  all_results_ares[[length(all_results_ares) + 1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_ares_vals)), c("SNP", col_names))
-  all_results_spikes[[length(all_results_spikes)+1]] <- setNames(cbind(data.frame(SNP = snp_actual), t(ll_spikes_vals)), c("SNP", col_names))
 }
 
 # --- GUARDADO ---
-if(length(all_results_legacy) > 0) {
+if (length(all_results_legacy) > 0) {
   df_legacy <- do.call(rbind, all_results_legacy)
-  out_legacy <- file.path(output_dir, paste0("TRON_LEGACY_Grid_TaskID_", task_id, "_", model_name, ".txt"))
-  write.table(df_legacy, file=out_legacy, row.names=FALSE, quote = FALSE, sep="\t")
+  out_legacy <- file.path(output_dir, paste0("P_TRON_LEGACY_Grid_TaskID_", task_id, "_", model_name, ".txt"))
+  write.table(df_legacy, file = out_legacy, row.names = FALSE, quote = FALSE, sep = "\t")
   print(paste("Guardado Grid Legacy:", out_legacy))
 } else {
   print("No se procesaron SNPs para Legacy.")
 }
 
-if(length(all_results_ares) > 0) {
-  df_ares <- do.call(rbind, all_results_ares)
-  out_ares <- file.path(output_dir, paste0("TRON_ARES_Grid_TaskID_", task_id, "_", model_name, ".txt"))
-  write.table(df_ares, file=out_ares, row.names=FALSE, quote = FALSE, sep="\t")
-  print(paste("Guardado Grid Ares:", out_ares))
-} else {
-  print("No se procesaron SNPs para Ares.")
-}
-
-if(length(all_results_spikes) > 0){
-  df_spikes <- do.call(rbind, all_results_spikes)
-  out_spikes <- file.path(output_dir, paste0("TRON_SPIKES_Grid_TaskID_", task_id,"_", model_name,".txt"))
-  write.table(df_spikes, file=out_spikes, row.names=FALSE, quote= FALSE, sep="\t")
-  print(paste("Guardado Grid Spikes:", out_spikes))
-} else {
-  print ("No se procesaro SNPs para Spikes")
-}
-
-
-print("Ejecución de Grid Search completada.")
+matriz_LL<-df_legacy[,-1]
+composite_ll<-colSums(matriz_LL, na.rm = TRUE)
+best_idx <- which.max(composite_ll)
+best_params <- param_grid[best_idx, ]
+print(paste("Mejores parámetros encontrados: D =", best_params$D, ", s =", best_params$s, "con log-likelihood =", composite_ll[best_idx]))

@@ -13,3 +13,11 @@ scripts/inference/.DS_Store
 test_scripts/
 results/
 Informes/
+AADNA_data/
+results_validations/
+results_PDE/
+chr_frequencies/
+figures/
+**.csv
+**.pdf
+**.png

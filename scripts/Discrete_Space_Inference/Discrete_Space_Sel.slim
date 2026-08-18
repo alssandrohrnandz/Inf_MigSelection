@@ -4,23 +4,23 @@ initialize() {
 	if (!exists("MIG")) 
 		defineConstant("MIG",0.05);
 	defineConstant("Migration", MIG);
-	defineConstant("pop", 1); //
+	defineConstant("pop", 10); //
 	if (!exists("id_replica"))
 		defineConstant("id_replica", 1);
 	if (!exists("Sel_V"))
 		defineConstant("Sel_V",0.01);
 	defineConstant("matrix_size", pop*pop);
-	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/");
-	defineConstant("MU", 1.2e-8);
+	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/independent_loci/");
+	defineConstant("MU", 1.29e-8);
 	initializeMutationRate(MU);
 	initializeMutationType("m1", 0.5, "f", Sel_V);
 	initializeGenomicElementType("g1",m1,1.0);
-	initializeGenomicElement(g1, 0, 9999); //
+	initializeGenomicElement(g1, 0, 999); 
 	initializeRecombinationRate(0.5);
 }
 
 1 early() {
-	// Configuración de la grilla (Stepping Stone 10x10)
+	defineGlobal("tiempo_inicial", clock());
 	metapopSide = pop;
 	metapopSize = pop*pop;
 	for (i in 1:metapopSize)
@@ -31,50 +31,53 @@ initialize() {
 		for (y in 1:metapopSide) {
 			destID = (x - 1) + (y - 1) * metapopSide + 1;
 			ds = subpops[destID - 1];
-			// Migración
 			if (x > 1) ds.setMigrationRates(destID - 1, Migration);
 			if (x < metapopSide) ds.setMigrationRates(destID + 1, Migration);
 			if (y > 1) ds.setMigrationRates(destID - metapopSide, Migration);
 			if (y < metapopSide) ds.setMigrationRates(destID + metapopSide, Migration);
-			
-			// GUI
-			xd = ((x - 1) / (metapopSide - 1)) * 0.9 + 0.05;
-			yd = ((y - 1) / (metapopSide - 1)) * 0.9 + 0.05;
-			ds.configureDisplay(c(xd, yd), 0.4);
 		}
 	
-	// 1. Verdad Terreno (Neutro)
-	writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv",
-		"Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-
+	// Precalcula x_pos/y_pos por subpop una sola vez (id -> coordenadas fijas)
+	n = asInteger(sqrt(matrix_size));
+	defineGlobal("N_GRID", n);
+	idx = 0:(matrix_size - 1);
+	defineGlobal("X_POS", (idx % n) + 1);
+	defineGlobal("Y_POS", asInteger(idx / n) + 1);
 	
+	// Buffer de escritura y frecuencia de volcado
+	defineGlobal("WRITE_BUFFER", string(0));
+	defineConstant("FLUSH_EVERY", 20); // ajustable
 }
 
-// Muestreo de la generación 1 a las 400
 1:1000 late() {
+	if (sim.cycle % 10 == 0) catn("Tick: " + sim.cycle);
 	
-	if (sim.cycle % 1 == 0) catn("Tick: " + sim.cycle);
-	n = asInteger(sqrt(matrix_size));
-
 	muts_m1 = sim.mutationsOfType(m1);
 	if (size(muts_m1) > 0) {
-		lines_m1 = "";
-		for (m in muts_m1) {
-			for (subpop in sim.subpopulations) {
-				freq = sim.mutationFrequencies(subpop, m);
-					//if (freq > 0) {
-					chr_tot = 2 * size(subpop.individuals);
-					allele_count = asInteger(round(freq * chr_tot));
-					index = subpop.id - 1;
-					x_pos = (index % n) + 1;
-					y_pos = asInteger(index / n) + 1;
-					line = paste(c(sim.cycle, m.id, x_pos, y_pos, freq, allele_count, chr_tot), sep=",");
-					lines_m1 = c(lines_m1, line);
-					//}
-			}
+		subpops = sim.subpopulations;
+		tick_lines = string(0);
+		
+		for (subpop in subpops) {
+			freqs = sim.mutationFrequencies(subpop, muts_m1); // 1 llamada por subpop, no por mutación
+			chr_tot = 2 * size(subpop.individuals);
+			index = subpop.id - 1;
+			x_pos = X_POS[index];
+			y_pos = Y_POS[index];
+			
+			allele_counts = asInteger(round(freqs * chr_tot));
+			
+			lines = sapply(seqAlong(muts_m1), "paste(c(sim.cycle, muts_m1[applyValue].id, x_pos, y_pos, freqs[applyValue], allele_counts[applyValue], chr_tot), sep=',');");
+			tick_lines = c(tick_lines, lines);
 		}
-		if (length(lines_m1) > 0) 
-			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv", 
-			paste(lines_m1, sep="\n"), append=T);
+		
+		defineGlobal("WRITE_BUFFER", c(WRITE_BUFFER, tick_lines));
+	}
+	
+	if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
+		if (length(WRITE_BUFFER) > 0) {
+			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv",
+				paste(WRITE_BUFFER, sep="\n"), append=T);
+			defineGlobal("WRITE_BUFFER", string(0));
+		}
 	}
 }

@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=Sim_Mig_Wave
+#SBATCH --job-name=Sel_Mig
 #SBATCH --partition=defq
-#SBATCH --output=logs/job_%A_%a.out
-#SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-101            
+#SBATCH --output=logs/Sel_%A_%a.out
+#SBATCH --error=logs/Sel_%A_%a.err
+#SBATCH --array=1-7000        
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=2G
 #SBATCH --time=24:00:00
 
 # === 1. Configuración Inicial ===
@@ -15,10 +15,18 @@ module load slim/5.1
 
 #TODO: Guardar todos los archivos .csv que se generen
 # === 2. Parameter Sweep Math ===
-MIG_VALUES=(0.00)
-SEL_VALUES=(0.05 0.01 0.005 0.001 0.0005 0.0001 0.00005 0.00001 0.000005 0.000001)
+#MIG_VALUES=(0.0 0.000005 0.00001 0.00005 0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
+MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125) #Solo para bajo seleccion, para reducir el tiempo de ejecucion. Se pueden agregar mas valores para mayor robustez
+# Equivale a calcular el % de migrantes por generacion en cada deme
+# 0.00001 = 0.01 migrantes de un deme de acuerdo a N*m
+# 0.001 = 1 migrante 
+# 0.1= 100 migrantes de un deme 
+
+SEL_VALUES=(0.1 0.075 0.05 0.025 0.01 0.0075 0.0050 0.0025 0.001 0.00075 0.0005 0.00025 0.0001 0.0)
+
+#SEL_VALUES=(0.0)
  ## TODO: Modificado para agregar variacion en la seleccion
-REPLICAS_PER_VAL=10
+REPLICAS_PER_VAL=50 # Modificado a 10 para reducir el tiempo de ejecucion, pero se pueden aumentar para mayor robustez
 
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
@@ -68,7 +76,7 @@ if [[ "$MODO" == "continuo" || "$MODO" == "ambos" ]]; then
 
     # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Continuous/subsets"
-    mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim"
+    mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_slim/independent_loci"
     mkdir -p "${DIR_BASE}/data/results_Continuous/outputs_LL"
 
     FILES_TO_PROCESS+=(
@@ -90,8 +98,8 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
 
     # Crear carpetas necesarias
     mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
-    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim"
-    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL"
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci"
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL/independent_loci"
     ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
     FILES_TO_PROCESS+=(
         "D_FULL_seleccion_m1"
@@ -99,7 +107,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
         #"D_aDNA_scattered_neutros_m1"
         #"D_aDNA_scattered_seleccion_m2"
     )
-    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/D_FULL_neutros_m1_${TASK_ID}.csv" ##TODO: Aqui cambie el D_FULL_neutros_m1
+    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/D_FULL_seleccion_m1_${TASK_ID}.csv" ##TODO: Aqui cambie el D_FULL_seleccion_m1
 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
         
@@ -108,7 +116,7 @@ if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
     else 
         
         echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
-        #slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
+        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
         
     fi
 fi
@@ -127,32 +135,22 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
     # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
     if [[ "$PREFIJO" == "C_"* ]]; then
         BASE_PATH_TYPE="results_Continuous"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Exploracion_Estocastica.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
     else
         BASE_PATH_TYPE="results_Discrete"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Exploracion_Estocastica.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations_binomial.R"
     fi
     
-    CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim"
-    CURRENT_SUBSET_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/subsets"
-    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL"
+    CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim/independent_loci"
+    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/independent_loci"
 
     SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
-    SUBSET_OUTPUT="${CURRENT_SUBSET_DIR}/subset_${PREFIJO}_${TASK_ID}.txt"
     
     # Verificación y Extracción (AWK)
     if [ -f "${SLIM_OUTPUT}" ]; then
         
-        # Ejecutar R
-        if [ -s "${SUBSET_OUTPUT}" ]; then
-            echo "    [${PREFIJO}] Analizando en R..."
-            
-            # CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
-            Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${SUBSET_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_SEL}"
-            
-        else
-            echo "    ALERTA: El subset para ${PREFIJO} quedó vacío."
-        fi
+        #CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
+        Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_MIG}" "${CURRENT_SEL}"
         
     else
         echo "    ALERTA: No se encontró la salida de SLiM: ${SLIM_OUTPUT}"
