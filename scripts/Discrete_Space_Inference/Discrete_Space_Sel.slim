@@ -1,22 +1,29 @@
 initialize() {
-	//initializeSex("A"); 
-	defineConstant("SubpopSize", 1000); //
-	if (!exists("MIG")) 
-		defineConstant("MIG",0.05);
-	defineConstant("Migration", MIG);
-	defineConstant("pop", 10); //
-	if (!exists("id_replica"))
-		defineConstant("id_replica", 1);
-	if (!exists("Sel_V"))
-		defineConstant("Sel_V",0.01);
-	defineConstant("matrix_size", pop*pop);
-	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/independent_loci/");
-	defineConstant("MU", 1.29e-8);
-	initializeMutationRate(MU);
-	initializeMutationType("m1", 0.5, "f", Sel_V);
-	initializeGenomicElementType("g1",m1,1.0);
-	initializeGenomicElement(g1, 0, 999); 
-	initializeRecombinationRate(0.5);
+    // initializeSex("A"); 
+    defineConstant("SubpopSize", 1000);
+    if (!exists("MIG")) 
+        defineConstant("MIG", 0.05);
+    defineConstant("Migration", MIG);
+    defineConstant("pop", 10);
+    defineConstant("matrix_size", pop * pop);
+    if (!exists("id_replica"))
+        defineConstant("id_replica", 1);    
+    if (!exists("Sel_V"))
+        defineConstant("Sel_V", 0.01);
+    if (!exists("MODEL"))
+        defineConstant("MODEL", "neutros");
+    defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/independent_loci/" + MODEL + "/");
+    if (MODEL == "neutros") {
+        actual_sel = 0.0;
+    } else {
+        actual_sel = Sel_V;
+    }
+    defineConstant("MU", 1.29e-8);
+    initializeMutationRate(MU);
+    initializeMutationType("m1", 0.5, "f", actual_sel);
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElement(g1, 0, 999); 
+    initializeRecombinationRate(0.5);
 }
 
 1 early() {
@@ -47,6 +54,10 @@ initialize() {
 	// Buffer de escritura y frecuencia de volcado
 	defineGlobal("WRITE_BUFFER", string(0));
 	defineConstant("FLUSH_EVERY", 20); // ajustable
+	filename = OUTPUT_PATH + "D_FULL_" + MODEL + "_m1_" + id_replica + ".csv";
+    defineGlobal("OUT_FILE", filename);
+	header = "Cycle,MutID,X,Y,Freq,Count,Total";
+    writeFile(OUT_FILE, header, append=F);
 }
 
 1:1000 late() {
@@ -75,7 +86,7 @@ initialize() {
 	
 	if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
 		if (length(WRITE_BUFFER) > 0) {
-			writeFile(OUTPUT_PATH + "D_FULL_seleccion_m1_" + id_replica + ".csv",
+			writeFile(OUT_FILE,
 				paste(WRITE_BUFFER, sep="\n"), append=T);
 			defineGlobal("WRITE_BUFFER", string(0));
 		}

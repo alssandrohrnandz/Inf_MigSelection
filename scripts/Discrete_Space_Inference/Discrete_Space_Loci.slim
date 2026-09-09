@@ -1,0 +1,140 @@
+initialize() {
+	//initializeSex("A"); 
+	defineConstant("SubpopSize", 1000);
+	if (!exists("MIG"))
+		defineConstant("MIG",0.05);
+	defineConstant("Migration", MIG);
+	defineConstant("pop", 10);
+	if (!exists("id_replica"))
+		defineConstant("id_replica", 10);
+	if (!exists("Sel_V"))
+		defineConstant("Sel_V",0.01);
+	//defineConstant("MODEL", MODEL);
+	defineConstant("matrix_size", pop*pop);
+	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/loci/");
+	defineConstant("MU", 1.29e-8);
+	initializeMutationRate(MU);
+	initializeMutationType("m1", 0.5, "f", 0.0);
+	initializeMutationType("m2", 0.5, "f", Sel_V);
+	
+	initializeGenomicElementType("g1", c(m1,m2), c(0.90, 0.10));
+	
+	rec_ends = NULL;
+	rec_rates = NULL;
+	for (index in 1:10) {
+		start = (index - 1)*100;
+		end = start + 99;
+		initializeGenomicElement(g1, start, end);
+		rec_ends = c(rec_ends, end);
+		rec_rates = c(rec_rates, 1e-8);
+		rec_ends = c(rec_ends, end + 1);
+		rec_rates = c(rec_rates, 0.5);
+	}
+	initializeRecombinationRate(rec_rates, rec_ends);
+}
+
+1 early() {
+	defineGlobal("tiempo_inicial", clock());
+	// Configuración de la grilla (Stepping Stone 10x10)
+	metapopSide = pop;
+	metapopSize = pop*pop;
+	for (i in 1:metapopSize)
+		sim.addSubpop(i, SubpopSize);
+	
+	subpops = sim.subpopulations;
+	for (x in 1:metapopSide)
+		for (y in 1:metapopSide) {
+			destID = (x - 1) + (y - 1) * metapopSide + 1;
+			ds = subpops[destID - 1];
+			// Migración
+			if (x > 1) ds.setMigrationRates(destID - 1, Migration);
+			if (x < metapopSide) ds.setMigrationRates(destID + 1, Migration);
+			if (y > 1) ds.setMigrationRates(destID - metapopSide, Migration);
+			if (y < metapopSide) ds.setMigrationRates(destID + metapopSide, Migration);
+			
+			// GUI
+			xd = ((x - 1) / (metapopSide - 1)) * 0.9 + 0.05;
+			yd = ((y - 1) / (metapopSide - 1)) * 0.9 + 0.05;
+			ds.configureDisplay(c(xd, yd), 0.4);
+		}
+	
+	n = asInteger(sqrt(matrix_size));
+	defineGlobal("N_GRID", n);
+	idx = 0:(matrix_size - 1);
+	defineGlobal("X_POS", (idx % n) + 1);
+	defineGlobal("Y_POS", asInteger(idx / n) + 1);
+	
+	// Buffer de escritura y frecuencia de volcado
+	defineGlobal("WRITE_BUFFER_M1", string(0));
+	defineGlobal("WRITE_BUFFER_M2", string(0));
+	defineConstant("FLUSH_EVERY", 50); // ajustable
+	
+	filename_m1 = OUTPUT_PATH + "D_FULL_" + MODEL + "_m1_" + id_replica + ".csv";
+	filename_m2 = OUTPUT_PATH + "D_FULL_" + MODEL + "_m2_" + id_replica + ".csv";
+	defineGlobal("OUT_FILE_M1", filename_m1);
+	defineGlobal("OUT_FILE_M2", filename_m2);
+	
+	header = "Cycle,MutID,X,Y,Freq,Count,Total";
+	writeFile(OUT_FILE_M1, header, append=F);
+	writeFile(OUT_FILE_M2, header, append=F);
+}
+
+// Muestreo de la generación 600 a la 1000
+1:1000 late() {
+	
+	if (sim.cycle % 10 == 0) catn("Tick: " + sim.cycle);
+	
+	muts_m1 = sim.mutationsOfType(m1);
+	if (size(muts_m1) > 0) {
+		subpops = sim.subpopulations;
+		tick_lines_m1 = string(0);
+		
+		for (subpop in subpops) {
+			freqs = sim.mutationFrequencies(subpop, muts_m1);
+			chr_tot = 2 * size(subpop.individuals);
+			index = subpop.id - 1;
+			x_pos = X_POS[index];
+			y_pos = Y_POS[index];
+			
+			allele_counts = asInteger(round(freqs * chr_tot));
+			
+			lines = sapply(seqAlong(muts_m1), "paste(c(sim.cycle, muts_m1[applyValue].id, x_pos, y_pos, freqs[applyValue], allele_counts[applyValue], chr_tot), sep=',');");
+			tick_lines_m1 = c(tick_lines_m1, lines);
+		}
+		
+		defineGlobal("WRITE_BUFFER_M1", c(WRITE_BUFFER_M1, tick_lines_m1));
+	}
+	
+	muts_m2 = sim.mutationsOfType(m2);
+	if (size(muts_m2) > 0) {
+		subpops = sim.subpopulations;
+		tick_lines_m2 = string(0);
+		
+		for (subpop in subpops) {
+			freqs = sim.mutationFrequencies(subpop, muts_m2);
+			chr_tot = 2 * size(subpop.individuals);
+			index = subpop.id - 1;
+			x_pos = X_POS[index];
+			y_pos = Y_POS[index];
+			
+			allele_counts = asInteger(round(freqs * chr_tot));
+			
+			lines = sapply(seqAlong(muts_m2), "paste(c(sim.cycle, muts_m2[applyValue].id, x_pos, y_pos, freqs[applyValue], allele_counts[applyValue], chr_tot), sep=',');");
+			tick_lines_m2 = c(tick_lines_m2, lines);
+		}
+		
+		defineGlobal("WRITE_BUFFER_M2", c(WRITE_BUFFER_M2, tick_lines_m2));
+	}
+	if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
+		if (length(WRITE_BUFFER_M1) > 0) {
+			writeFile(OUT_FILE_M1, paste(WRITE_BUFFER_M1, sep="\n"), append=T);
+			defineGlobal("WRITE_BUFFER_M1", string(0));
+		}
+		if (length(WRITE_BUFFER_M2) > 0) {
+			writeFile(OUT_FILE_M2, paste(WRITE_BUFFER_M2, sep="\n"), append=T);
+			defineGlobal("WRITE_BUFFER_M2", string(0));
+		}
+	}
+
+
+}

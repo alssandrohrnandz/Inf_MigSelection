@@ -1,3 +1,23 @@
+# ==============================================================================
+# ANÁLISIS BINOMIAL - ILUSTRATIVO PARA PÓSTER
+# ==============================================================================
+# Autor:        hlopezh
+# Fecha:        Junio 2026
+# Proyecto:     Resultados para Póster - Conferencia Copenhague
+# 
+# DESCRIPCIÓN:
+# Script generado exclusivamente para producir los resultados visuales/gráficos 
+# del póster presentado en Copenhague. Es de carácter meramente ILUSTRATIVO.
+# 
+# NOTA / ADVERTENCIA:
+# Los resultados de las simulaciones de SLiM aquí presentados no están 
+# completos ni son definitivos. No usar para el análisis final de la investigación.
+# 
+# REQUISITOS / ENTRADAS:
+# - Archivos de salida de SLiM: [Ej. D_FULL_neutros_m1.csv]
+# - Paquetes necesarios: deSolve, data.table, VGAM
+# ==============================================================================
+
 library(deSolve)
 library(data.table)
 library(VGAM)
@@ -57,7 +77,7 @@ valores_base <- c(1, 2.5, 5)
 DifussionValuesToCheck <- sort(unique(c(0, as.vector(outer(valores_base, 10^exponentes_D)), 0.125, 0.075)))
 DifussionValuesToCheck <- DifussionValuesToCheck[DifussionValuesToCheck <= 1]
 
-if (model_name == "D_FULL_neutros_m1") {
+if (model_name %in% c("D_FULL_neutros_m1", "D_FULL_mixto_m1")) {
   SelectionValuesToCheck <- c(0.0)
 } else {
   bases <- c(1, 2.5, 5, 7.5)
@@ -67,6 +87,7 @@ if (model_name == "D_FULL_neutros_m1") {
   #SelectionValuesToCheck <- sort(unique(c(-valores_pos, 0, valores_pos)))
   SelectionValuesToCheck <- sort(unique(c(0, valores_pos)))
 }
+
 
 # Lectura y preparación de datos
 freq_data_raw <- read.csv(freq_file, header=TRUE, stringsAsFactors=FALSE)

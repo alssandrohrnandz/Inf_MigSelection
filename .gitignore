@@ -22,4 +22,7 @@ figures/
 **.csv
 **.pdf
 **.png
-**.txtdf_raw.rds
+**.txt
+df_raw.rds
+**.zip
+

@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH --job-name=Plot_Mig_Wave
 #SBATCH --partition=defq
-#SBATCH --output=logs/plot_%A_%a.out
-#SBATCH --error=logs/plot_%A_%a.err
-#SBATCH --array=1,11,21,31,41,51        # Inicios de cada grupo (1 Job por valor de Migración)
+#SBATCH --output=logs/N_plot_%A_%a.out
+#SBATCH --error=logs/N_plot_%A_%a.err
+#SBATCH --array=1-500:50        # Inicios de cada grupo (1 Job por valor de Migración)
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
 #SBATCH --time=01:00:00
 
 module load r/4.1.3
-MIG_VALUES=(0.1 0.01 0.001 0.0001 0.00001)
-REPLICAS_PER_VAL=10 #Camvio de 50 a 10 por Continuos
+MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
+REPLICAS_PER_VAL=50 #Camvio de 50 a 10 por Continuos
 
 # Calcular índices para saber qué Valor de Migración es este
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))

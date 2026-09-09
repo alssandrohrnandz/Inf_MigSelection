@@ -15,16 +15,22 @@ input_dir   <- args[1]
 output_dir  <- args[2]
 task_id_reg <- args[3]
 m_value     <- as.numeric(args[4])
-prefix      <- if(!is.na(args[5])) args[5] else "Analysis"
-s_value    <- as.numeric(args[6]) 
+s_value    <- as.numeric(args[5])
+prefix      <- args[6]#if(!is.na(args[6])) args[5] else "Analysis"
 s_value <- s_value/2
 print(paste("Analizando Superficie Conjunta (D vs s). Migración teórica:", m_value))
-print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_value , "(Novembre*2)"))
-
+print(paste("Analizando Superficie Conjunta (D vs s). Selección teórica:", s_value , "(Novembre's)"))
+print(paste("Arg 1:", input_dir ))
+print(paste("Arg 2:", output_dir ))
+print(paste("Arg 3:", task_id_reg ))
+print(paste("Arg 4:", m_value ))
+print(paste("Arg 5:", s_value ))
+print(paste("Arg 6:", prefix ))
 # ==========================================
 # 2. Carga de Archivos
 # ==========================================
-pattern_to_search <- paste0("^", prefix, "_TaskID_", task_id_reg, "_All_SNPs.txt")
+# La búsqueda del patron debe modificarse
+pattern_to_search <- paste0(prefix, "_" ,task_id_reg, "_D_FULL_seleccion_m1.txt")
 print(pattern_to_search)
 file_list <- list.files(path = input_dir, pattern = pattern_to_search, full.names = TRUE)
 
@@ -169,10 +175,10 @@ clean_filename <- paste0(prefix, "_Performance_Mig_", m_value, "_Sel_", s_value)
 #ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_D.png")), 
 #       plot = p_dist_D, width = 6, height = 6)
 
-ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Dist_s.png")), 
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Independent_Loci_Dist_s.png")), 
        plot = p_dist_s, width = 6, height = 6)
 
-ggsave(filename = file.path(output_dir, paste0(clean_filename, "_SingleSNP_Diagnostics.png")), 
+ggsave(filename = file.path(output_dir, paste0(clean_filename, "_Independent_Loci_SingleSNP_Diagnostics.png")), 
        plot = p_diag_snps, width = 8, height = 6)
 
 print(paste("Gráficos guardados exitosamente en:", output_dir))

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=Sim_Mig_Wave
 #SBATCH --partition=defq
-#SBATCH --output=logs/job_%A_%a.out
-#SBATCH --error=logs/job_%A_%a.err
-#SBATCH --array=1-50                # 5 valores migración * 50 réplicas = 250
+#SBATCH --output=logs/Plot_Neutros_%A_%a.out
+#SBATCH --error=logs/Plot_Neutros_%A_%a.err
+#SBATCH --array=1-500                # 5 valores migración * 50 réplicas = 250
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G

@@ -1,20 +1,20 @@
 #!/bin/bash
 #SBATCH --job-name=Plot_Mig_Sel
 #SBATCH --partition=defq
-#SBATCH --output=logs/plot_%A_%a.out
-#SBATCH --error=logs/plot_%A_%a.err
-#SBATCH --array=1,11,21,31,41,51,61,71,81,91,101,111,121,131,141,151,161,171,181,191,201,211,221,231,241,251,261,271,281,291,301,311,321,331,341,351,361,371,381,391,401,411
+#SBATCH --output=logs/S_plot_%A_%a.out
+#SBATCH --error=logs/S_plot_%A_%a.err
+#SBATCH --array=1-7000:50
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=2G
 #SBATCH --time=01:00:00
 
 module load r/4.1.3
 
 # Definimos variables
-MIG_VALUES=(0.0 0.01 0.05 0.1 0.2 0.25)
-SEL_VALUES=(0.1 0.05 0.01 0.005 0.001 0.0005 0.0001)
-REPLICAS_PER_VAL=10
+MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
+SEL_VALUES=(0.1 0.075 0.05 0.025 0.01 0.0075 0.0050 0.0025 0.001 0.00075 0.0005 0.00025 0.0001 0.0)
+REPLICAS_PER_VAL=50 
 
 # === LÓGICA DE ÍNDICES CORREGIDA (2 DIMENSIONES) ===
 
@@ -92,14 +92,14 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/Plot_Likelihood_Sel.R"
     else
         BASE_PATH_TYPE="results_Discrete"
-        #SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/Plot_Likelihood_Sel.R"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Legacy_Modern.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/Plot_Likelihood_Sel.R"
+        #SCRIPT_R_PATH="${DIR_BASE}/scripts/Legacy_Modern.R"
     fi
 
-    
+    echo "Ejecutando Script "$SCRIPT_R_PATH" con patrón "$PREFIJO""
 
-    INPUT_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL"
-    OUTPUT_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/figures"
+    INPUT_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/seleccion"
+    OUTPUT_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/figures/seleccion"
     mkdir -p "${OUTPUT_DIR}"
 
     # 2. Verificar existencia con el primer ID del grupo
@@ -113,8 +113,8 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
             "${OUTPUT_DIR}" \
             "${TASK_ID_PATTERN}" \
             "${CURRENT_MIG}" \
-            "${CURRENT_SEL}"
-            #"${PREFIJO}" \
+            "${CURRENT_SEL}" \
+            "${PREFIJO}" \
              
         
     else

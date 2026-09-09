@@ -6,12 +6,10 @@ library(purrr)
 library(ggplot2)
 library(scales)
 
-# Definimos la paleta de colores global para los 3 modelos
-#mis_colores <- c("TRON_ARES" = "#F8766D", "TRON_LEGACY" = "#00BFC4", "TRON_SPIKES" = "#C77CFF")
 # Definimos la paleta de colores global y los nuevos nombres
-mis_colores <- c("Classic" = "#00BFC4", "B-B" = "#F8766D", "BwS" = "#C77CFF")
+mis_colores <- c("Classic" = "#004488", "B-B" = "#BB5566", "BwS" = "#DDAA33")
 # === 1. LECTURA Y ETIQUETADO DE ARCHIVOS ===
-directorio <- "data/results_Discrete/outputs_LL/independent_loci"
+directorio <- "data/results_Discrete/outputs_LL/independent_loci/neutros"
 rutas_archivos <- list.files(path = directorio, pattern = "\\.txt$", full.names = TRUE)
 
 # Función para procesar un solo archivo
@@ -43,21 +41,31 @@ procesar_archivo <- function(ruta) {
 
 # Aplicar la función a todos los archivos y unirlos en un solo Master DF
 df_raw <- map_dfr(rutas_archivos, procesar_archivo)
-df_raw <- df_raw %>%
+# Retener solo SNPs que no tengan ningún NA en las columnas de la grilla
+df_clean <- df_raw %>%
+  filter(if_all(starts_with("D_"), ~ !is.na(.) & !is.infinite(.)))
+
+df_clean <- df_clean %>%
   mutate(Model = factor(Model, levels = c("Classic", "B-B", "BwS")))
 # === 2. TRANSFORMACIÓN, LIMPIEZA DE NAs Y COMPOSITE LIKELIHOOD ===
 
 # 1. Transformamos a formato largo y limpiamos
-df_long <- df_raw %>%
+df_long <- df_clean %>%
   pivot_longer(
     cols = starts_with("D_"), 
     names_to = "Grid_Param", 
     values_to = "Likelihood"
   ) %>%
   drop_na(Likelihood, SNP) %>% 
+  separate_wider_delim(
+    cols = Grid_Param,
+    delim = "_",
+    names = c(NA, "Inferred_D", NA, "Inferred_s"),
+    cols_remove = FALSE
+  ) %>% 
   mutate(
-    Inferred_D = as.numeric(str_extract(Grid_Param, "(?<=D_)[0-9\\.]+")),
-    Inferred_s = as.numeric(str_extract(Grid_Param, "(?<=s_)[-0-9\\.]+"))
+    Inferred_D = as.numeric(Inferred_D),
+    Inferred_s = as.numeric(Inferred_s)
   )
 
 # 2. CALCULAR EL COMPOSITE LIKELIHOOD (Sumar todos los SNPs por cada punto del Grid)
@@ -76,7 +84,7 @@ df_mle <- df_composite %>%
   slice_max(order_by = Composite_LL, n = 1, with_ties = FALSE) %>%
   ungroup()
 
-mig_values <- c(0.0, 0.000005, 0.00001, 0.00005,  0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05 ,0.075, 0.1, 0.125)
+mig_values <- c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
 sel_values <- c(0.0)#c(0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001)
 replicas_per_val <- 50
 
@@ -157,7 +165,7 @@ plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, co
   )
 
 # Anchura aumentada a 14 para acomodar 3 paneles
-ggsave("Publication_Recovery_Neutros.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+ggsave("Publication_Recovery_Neutros_p1.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
 
 # GRÁFICA 2: RECUPERACIÓN SELECCIÓN
 linea_perfecta <- data.frame(
@@ -412,11 +420,11 @@ plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, co
   # Aplicamos transformación pseudo-logarítmica para ver bien los valores diminutos y el cero
   scale_x_continuous(
     trans = pseudo_log_trans(sigma = 1e-5, base = 10),
-    breaks = c(0, 1e-5, 1e-4, 1e-3, 0.01, 0.05, 0.1, 0.125)
+    breaks = c(0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
   ) +
   scale_y_continuous(
     trans = pseudo_log_trans(sigma = 1e-5, base = 10),
-    breaks = c(0, 1e-5, 1e-4, 1e-3, 0.01, 0.05, 0.1, 0.125)
+    breaks = c(0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
   ) +
   scale_color_manual(values = mis_colores) + # Asegúrate de tener 'mis_colores' definido
   labs(
@@ -434,7 +442,8 @@ plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, co
     strip.text = element_text(face = "bold")
   )
 
-ggsave("Publication_Recovery_Neutros_Log.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+ggsave("figures/independent_loci/Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+
 
 ###  Violin Neutros
 
@@ -454,8 +463,8 @@ plot_neutros_violin <- ggplot(df_neutros, aes(x = as.factor(True_Mig), y = Infer
   # Reemplaza tu escala Y actual por esta:
   scale_y_continuous(
     trans = pseudo_log_trans(sigma = 1e-6, base = 10),
-    breaks = c(0, 1e-5, 1e-4, 1e-3, 0.01, 0.1), # Quitamos el 0.125
-    labels = c("0", "1e-5", "1e-4", "0.001", "0.01", "0.1")
+    breaks = c(0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125), # Quitamos el 0.125
+    labels = c("0", "0.0001", "0.0005", "0.001", "0.005", "0.01", "0.025", "0.05", "0.075", "0.1", "0.125")
   ) +
   scale_fill_manual(values = mis_colores) +
   labs(
@@ -473,7 +482,7 @@ plot_neutros_violin <- ggplot(df_neutros, aes(x = as.factor(True_Mig), y = Infer
     strip.text = element_text(face = "bold")
   )
 
-ggsave("Publication_Dispersion_Neutros_Violin.png", plot = plot_neutros_violin, width = 14, height = 6, dpi = 300)
+ggsave("figures/independent_loci/Publication_Dispersion_Neutros_Violin.png", plot = plot_neutros_violin, width = 14, height = 6, dpi = 300)
 
 # Test comparación de medias con Wilcoxon y correción de Bonferri
 

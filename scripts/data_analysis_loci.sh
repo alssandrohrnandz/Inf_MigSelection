@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=Sel_Mig
+#SBATCH --job-name=TEST_Loci
 #SBATCH --partition=defq
-#SBATCH --output=logs/IndLoci_%A_%a.out
-#SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=1-500        
+#SBATCH --output=logs/Loci_%A_%a.out
+#SBATCH --error=logs/Loci_%A_%a.err
+#SBATCH --array=11-550        
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -19,17 +19,17 @@ MODO=${1:-ambos}
 # Argumento 2: Acción (completo, solo_analisis) - Por defecto: completo
 ACCION=${2:-completo}
 # Argumento 3: Tipo de alelo (neutros, seleccion)
-MODEL=${3:-neutros} 
+MODEL=${3:-mixto} 
 
 # CORRECCIÓN: Espacios obligatorios y uso de "neutros" (con 's')
-if [ "${MODEL}" == "neutros" ]; then
-    SEL_VALUES=(0.0)
+if [ "${MODEL}" == "mixto" ]; then
+    SEL_VALUES=(0.01)
 else
     SEL_VALUES=(0.1 0.075 0.05 0.025 0.01 0.0075 0.0050 0.0025 0.001 0.00075 0.0005 0.00025 0.0001 0.0)
 fi
 # === 2. Parameter Sweep Math ===
 #MIG_VALUES=(0.0 0.000005 0.00001 0.00005 0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
-MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125) #Solo para bajo seleccion, para reducir el tiempo de ejecucion. Se pueden agregar mas valores para mayor robustez
+MIG_VALUES=(0.0 0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125) #Solo para bajo seleccion, para reducir el tiempo de ejecucion. Se pueden agregar mas valores para mayor robustez
 # Equivale a calcular el % de migrantes por generacion en cada deme
 # 0.00001 = 0.01 migrantes de un deme de acuerdo a N*m
 # 0.001 = 1 migrante 
@@ -100,27 +100,22 @@ fi
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
 
     # Crear carpetas necesarias
-    mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
-    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/${MODEL}"
-    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL/independent_loci/${MODEL}"
-    ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim/loci/"
+    mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL/loci/"
     FILES_TO_PROCESS+=(
         "D_FULL_${MODEL}_m1"
-        #"D_FULL_seleccion_m1"
-        #"D_FULL_neutros_m1" 
-        #"D_aDNA_scattered_neutros_m1"
-        #"D_aDNA_scattered_seleccion_m2"
     )
-    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/${MODEL}/D_FULL_${MODEL}_m1_${TASK_ID}.csv" ##TODO: Aqui cambie el D_FULL_seleccion_m1
-
+    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/loci/D_FULL_${MODEL}_m1_${TASK_ID}.csv" 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
         
         echo "--> [SKIP] Saltando SLiM (Solicitado 'solo_analisis' o archivo ya existente)."
         
     else 
-        
+
+        # EJECUCIÓN DE SLiM
+
         echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
-        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
+        slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Loci.slim"
         
     fi
 fi
@@ -135,8 +130,7 @@ fi
 echo "--> Iniciando extracción y análisis en R..."
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
-    # CORRECCIÓN 2: Determinar rutas dinámicamente según el prefijo del archivo
-    # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
+
     if [[ "$PREFIJO" == "C_"* ]]; then
         BASE_PATH_TYPE="results_Continuous"
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
@@ -145,8 +139,8 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations_binomial.R"
     fi
     
-    CURRENT_SLIM_DIR="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_slim/independent_loci/${MODEL}"
-    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/independent_loci_binomial_results"
+    CURRENT_SLIM_DIR="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_slim/loci"
+    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/loci"
 
     SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
     
