@@ -7,7 +7,7 @@ library(ggplot2)
 library(scales)
 
 # === 1. LECTURA Y PROCESAMIENTO DE ARCHIVOS SLIM ===
-directorio <- "data/results_Discrete/outputs_slim"
+directorio <- "data/results_Discrete/outputs_slim/independent_loci/seleccion"
 # Cambiamos el patrón para buscar los .csv de SLiM
 rutas_archivos <- list.files(path = directorio, pattern = "\\.csv$", full.names = TRUE)
 
@@ -121,3 +121,121 @@ plot_lifespan <- ggplot(df_plot_seleccion, aes(x = True_Sel, y = Mean_Lifespan))
 
 print(plot_lifespan)
 ggsave("Publication_Allele_Lifespan.png", plot = plot_lifespan, width = 12, height = 8, dpi = 300)
+
+
+library(tidyverse)
+library(data.table)   # fread + fwrite: más rápido y menor RAM que read.csv
+
+# ============================================================
+# 0. CONFIGURACIÓN
+# ============================================================
+directorio <- "data/results_Discrete/outputs_slim/independent_loci/seleccion"
+archivo_salida  <- "results/slim_lifespan_summary.csv"
+
+rutas_archivos <- list.files(directorio, pattern = "\\.csv$", full.names = TRUE)
+rutas_archivos <- rutas_archivos[!grepl("^P_TRON|^P_", basename(rutas_archivos))]
+
+cat("Archivos a procesar:", length(rutas_archivos), "\n")
+
+# ============================================================
+# 1. FUNCIÓN: leer UN archivo -> 1 fila de resumen
+# ============================================================
+# Columnas asumidas: Generation, MutationID, Frequency
+# Si tu SLiM output usa otros nombres, ajusta el `select =`.
+procesar_archivo_slim <- function(ruta) {
+  nombre <- basename(ruta)
+
+  # Lectura eficiente: solo las columnas necesarias
+  dt <- tryCatch(
+    fread(ruta, select = c("Generation", "MutationID", "Frequency"),
+          showProgress = FALSE, data.table = TRUE),
+    error = function(e) { message("Fallo lectura ", nombre, ": ", e$message); NULL }
+  )
+  if (is.null(dt) || nrow(dt) == 0) return(NULL)
+
+  # Homogeneizar tipos
+  dt[, Generation := as.numeric(Generation)]
+  dt[, MutationID := as.character(MutationID)]
+  dt <- dt[!is.na(Generation)]
+
+  if (nrow(dt) == 0) return(NULL)
+
+  gen_max <- max(dt$Generation)
+
+  # ---- Resumen por mutación ----
+  per_mut <- dt[, .(
+    first_gen = min(Generation),
+    last_gen  = max(Generation),
+    lifespan  = max(Generation) - min(Generation) + 1,
+    max_freq  = max(Frequency, na.rm = TRUE),
+    last_freq = Frequency[which.max(Generation)]
+  ), by = MutationID]
+
+  # ---- Clasificación fijado / perdido / segregando ----
+  per_mut[, status := fifelse(
+    last_freq >= 0.99,                        "Fixed",
+    fifelse(last_gen < gen_max | last_freq == 0, "Lost",
+                                                 "Segregating")
+  )]
+
+  # ---- Metadatos ----
+  tipo    <- ifelse(str_detect(nombre, "neutros"), "Neutro", "Seleccion")
+  task_id <- as.integer(str_extract(nombre, "\\d+(?=\\.csv$)"))
+
+  # ---- Resumen a nivel de archivo (UNA fila) ----
+  tibble(
+    File                = nombre,
+    TaskID              = task_id,
+    Type                = tipo,
+    Total_Mutations     = nrow(per_mut),
+    Mean_Lifespan       = mean(per_mut$lifespan,  na.rm = TRUE),
+    Median_Lifespan     = median(per_mut$lifespan, na.rm = TRUE),
+    SE_Lifespan         = sd(per_mut$lifespan, na.rm = TRUE) / sqrt(nrow(per_mut)),
+    N_Fixed             = sum(per_mut$status == "Fixed"),
+    N_Lost              = sum(per_mut$status == "Lost"),
+    N_Segregating       = sum(per_mut$status == "Segregating"),
+    Pct_Fixed           = 100 * mean(per_mut$status == "Fixed"),
+    Pct_Lost            = 100 * mean(per_mut$status == "Lost"),
+    Mean_Lifespan_Fixed = mean(per_mut$lifespan[per_mut$status == "Fixed"], na.rm = TRUE),
+    Mean_Lifespan_Lost  = mean(per_mut$lifespan[per_mut$status == "Lost"],  na.rm = TRUE)
+  )
+}
+
+# ============================================================
+# 2. LOOP INCREMENTAL (con reanudación)
+# ============================================================
+# Si el CSV ya existe, saltamos los archivos ya procesados
+if (file.exists(archivo_salida)) {
+  ya_procesados <- fread(archivo_salida, select = "File")$File
+  rutas_archivos <- rutas_archivos[!basename(rutas_archivos) %in% ya_procesados]
+  cat("Reanudando. Faltan:", length(rutas_archivos), "archivos.\n")
+}
+
+for (i in seq_along(rutas_archivos)) {
+  res <- tryCatch(
+    procesar_archivo_slim(rutas_archivos[i]),
+    error = function(e) {
+      message("Error en ", basename(rutas_archivos[i]), ": ", conditionMessage(e))
+      NULL
+    }
+  )
+
+  if (!is.null(res)) {
+    # Escribir INMEDIATAMENTE en disco (append)
+    existe <- file.exists(archivo_salida)
+    fwrite(res, archivo_salida, append = existe, col.names = !existe)
+  }
+
+  # Liberar memoria cada 50 archivos
+  if (i %% 50 == 0) {
+    gc(verbose = FALSE)
+    message(sprintf("Procesados %d / %d", i, length(rutas_archivos)))
+  }
+}
+
+# ============================================================
+# 3. CARGAR EL RESULTADO FINAL (ya ligero en RAM)
+# ============================================================
+df_raw <- fread(archivo_salida) %>% as_tibble()
+cat("Filas totales:", nrow(df_raw), "\n")
+print(head(df_raw))

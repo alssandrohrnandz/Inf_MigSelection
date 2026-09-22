@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/IndLoci_%A_%a.out
 #SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=1-500        
+#SBATCH --array=1-64        
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
