@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=TEST_Loci
+#SBATCH --job-name=Chop_Suey
 #SBATCH --partition=defq
 #SBATCH --output=logs/Loci_%A_%a.out
 #SBATCH --error=logs/Loci_%A_%a.err
-#SBATCH --array=11-550        
+#SBATCH --array=1-550        
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=8G
@@ -23,7 +23,7 @@ MODEL=${3:-mixto}
 
 # CORRECCIÓN: Espacios obligatorios y uso de "neutros" (con 's')
 if [ "${MODEL}" == "mixto" ]; then
-    SEL_VALUES=(0.01)
+    SEL_VALUES=(0.0)
 else
     SEL_VALUES=(0.1 0.075 0.05 0.025 0.01 0.0075 0.0050 0.0025 0.001 0.00075 0.0005 0.00025 0.0001 0.0)
 fi
@@ -136,7 +136,7 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
     else
         BASE_PATH_TYPE="results_Discrete"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations_binomial.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations.R"
     fi
     
     CURRENT_SLIM_DIR="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_slim/loci"
