@@ -5,7 +5,7 @@
 #SBATCH --time=12:00:00
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=6G
-#SBATCH --partition=normal
+#SBATCH --partition=defq
 #SBATCH --array=1-20            # 20 chunks en paralelo
 #SBATCH --mail-type=END,FAIL
 #SBATCH --mail-user=tu@correo
@@ -14,6 +14,6 @@ module purge
 module load r/4.1.3
 mkdir -p logs
 
-Rscript procesar_lifespan.R "$SLURM_ARRAY_TASK_ID" 20
+Rscript /mnt/data/dortega/hlopezh/Inf_MigSelection/scripts/procesar_lifespan.R "$SLURM_ARRAY_TASK_ID" 20
 
 echo "[$(date)] Chunk $SLURM_ARRAY_TASK_ID terminado"

@@ -1,60 +1,54 @@
 initialize() {
-	initializeSLiMModelType("nonWF"); // A NWF model is simulated under the following conditions
-	initializeSLiMOptions(dimensionality="xy"); //A 2D space modeled
-	defineConstant("S_COEFF", 0.01); // Selection coefficient 
+	initializeSLiMModelType("nonWF");
+	initializeSLiMOptions(dimensionality="xy");
+
+	// --- Parámetros ecológicos ---
 	if (!exists("MIG"))
-		defineConstant("MIG",0.05); // Under this model, MIG is just a value. It should be between 0 and 1
-	defineConstant("SIGMA", MIG); // Dispersion (SD) <- this should be as (D) in difussion models
-	defineConstant("MU", 1.2e-8);    // A real mutation rate
+		defineConstant("MIG", 0.05);
+	defineConstant("SIGMA", MIG);
+	defineConstant("MU", 1.29e-8);
 	defineConstant("LIFETIME", 2);
 	defineConstant("FECUN", 1 / LIFETIME);
-	defineConstant("MAP_WIDTH",1.0);
-	initializeMutationRate(MU);
-	// Mutations:
-	// m1: Neutral
-	// m2: Under natural selection (S_COEFF will be applied manually in early())
-	initializeMutationType("m1", 0.5, "f", 0.0);
-	initializeMutationType("m2", 0.5, "f", S);
-	initializeGenomicElementType("g1", c(m1, m2), c(0.99, 0.01)); //This should be the proportion of m1 and m2 that will appear in our sims
-	//Structure of our Chrs
-	rec_ends = NULL;
-	rec_rates = NULL;
-	// We build 20 fragments of 1000bp with free recombinations each one of them
-	for (index in 1:10) {
-		start = (index - 1)*1000;
-		end = start + 999;
-		initializeGenomicElement(g1, start, end);
-		
-		rec_ends = c(rec_ends, end);
-		rec_rates = c(rec_rates, 1e-8); // Recombination rate INSIDE genes
-		
-		rec_ends = c(rec_ends, end + 1);
-		rec_rates = c(rec_rates, 0.5);  // RRecombination rate BETWEEN genes
-	}
-	
-	initializeRecombinationRate(rec_rates, rec_ends);
-	
-	// MODEL'S CONSTANTS
-	defineConstant("K", 10000);      // Capacidad de carga total aprox
-	defineConstant("N", 10000);      // Tamaño inicial
-	defineConstant("GRID_SIZE", 10); // Para la discretización virtual (10x10)
-	defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Continuous/outputs_slim/");
+	defineConstant("MAP_WIDTH", 1.0);
+
+	// --- Parámetros genéticos desde bash (idéntico al script discreto) ---
+	if (!exists("Sel_V"))
+		defineConstant("Sel_V", 0.01);
+	if (!exists("MODEL"))
+		defineConstant("MODEL", "neutros");
 	if (!exists("id_replica"))
 		defineConstant("id_replica", 1);
-	
-	// Parámetros de movimiento
-	defineConstant("SD", SIGMA); // Sigma de Dispersión (Natal)
-	defineConstant("SV", SIGMA);  // Movimiento adulto
-	defineConstant("SM", SIGMA);  // Búsqueda de pareja
-	//TODO: Experimentar con 0.01 y ver cuáles son los parámetros que infiere
-	//TODO: Experimentar con 0.001 y 0.0001
-	//INPROGRESS: Experimentar con 500 y 1000
-	
-	// Interacciones Espaciales
-	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SD*3); // Competencia
+
+	if (MODEL == "neutros") {
+		actual_sel = 0.0;
+	} else {
+		actual_sel = Sel_V;
+	}
+
+	// --- Modelo de cromosoma: un único bloque de 1000 pb con m1 ---
+	initializeMutationRate(MU);
+	initializeMutationType("m1", 0.5, "f", actual_sel);   // s viene de bash
+	initializeGenomicElementType("g1", m1, 1.0);          // solo m1
+	initializeGenomicElement(g1, 0, 999);                 // 1000 pb
+	initializeRecombinationRate(0.5);                     // recombinación libre (loci independientes)
+
+	// --- Constantes del modelo ---
+	defineConstant("K", 10000);
+	defineConstant("N", 10000);
+	defineConstant("GRID_SIZE", 10);  // grilla virtual para el registro
+	defineConstant("OUTPUT_PATH",
+		"/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Continuous/outputs_slim/independent_loci_test_sel/" + MODEL + "/");
+
+	// --- Movimiento ---
+	defineConstant("SD", SIGMA);
+	defineConstant("SV", SIGMA);
+	defineConstant("SM", SIGMA);
+
+	// --- Interacciones espaciales ---
+	initializeInteractionType(1, "xy", reciprocal=T, maxDistance=SD*3);   // competencia
 	i1.setInteractionFunction("n", 1.0, SD);
-	
-	initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM*3); // Apareamiento
+
+	initializeInteractionType(2, "xy", reciprocal=T, maxDistance=SM*3);   // apareamiento
 	i2.setInteractionFunction("n", 1.0, SM);
 }
 
@@ -63,15 +57,14 @@ initialize() {
 	p1.setSpatialBounds(c(0.0, 0.0, MAP_WIDTH, MAP_WIDTH));
 	p1.individuals.setSpatialPosition(p1.pointUniform(p1.individualCount));
 	catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount);
-	
-	// --- PREPARACIÓN DE ARCHIVOS DE SALIDA ---
-	writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv","Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-	
-	writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv","Generation,MutationID,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-	
-	//writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
-	
-	//writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv","Generation,MutationID,MutType,X,Y,Frequency,AlleleCount,Chr_Tot", append=F);
+
+	// --- Preparación del archivo de salida (formato igual al discreto) ---
+	filename = OUTPUT_PATH + "C_FULL_" + MODEL + "_m1_" + id_replica + ".csv";
+	defineGlobal("OUT_FILE", filename);
+	defineConstant("FLUSH_EVERY", 20);
+	writeFile(OUT_FILE, "Cycle,MutID,X,Y,Freq,Count,Total", append=F);
+
+	defineGlobal("WRITE_BUFFER", string(0));
 }
 
 first() {
@@ -82,15 +75,11 @@ first() {
 }
 
 reproduction() {
-	mut_count = individual.countOfMutationsOfType(m2); //esto viene de early
-	selection_multiplier = 1.0 + S_COEFF * mut_count; //viene de early
-	// Aplicar selección a la fecundidad base
-	real_fecundity = FECUN * selection_multiplier; // viene de early
-	//rezando a Dios a partir de aqui
+	// La selección ahora es intrínseca al tipo de mutación m1 (fitness effect).
+	// No se aplica manualmente el multiplicador de fecundidad.
 	mate = i2.drawByStrength(individual, 1);
 	if (mate.size()) {
-		children = subpop.addCrossed(individual, mate, count=rpois(1, 2 * real_fecundity));
-		
+		children = subpop.addCrossed(individual, mate, count=rpois(1, 2 * FECUN));
 		for (child in children) {
 			pos = individual.spatialPosition + rnorm(2, 0, SD);
 			child.setSpatialPosition(p1.pointReflected(pos));
@@ -99,150 +88,81 @@ reproduction() {
 }
 
 early() {
-	//INPROGRESS: densidad y competencia
 	offspring = p1.subsetIndividuals(maxAge=0);
 	p1.deviatePositions(offspring, "reprising", INF, "n", SD);
 	i1.evaluate(p1);
 	inds = p1.individuals;
-	density = i1.localPopulationDensity(inds); //agregado
-	//target_density = K / (GRID_SIZE * GRID_SIZE); //agregado
-	u = density / ((1 + FECUN) * 9000); //agregado
-	inds.fitnessScaling = 1.0 / (1.0 + FECUN * u); //agregado
+	density = i1.localPopulationDensity(inds);
+	u = density / ((1 + FECUN) * 9000);
+	inds.fitnessScaling = 1.0 / (1.0 + FECUN * u);
+	// Nota: fitnessScaling se combina multiplicativamente con el efecto
+	// de las mutaciones m1 => la selección actúa vía supervivencia.
 }
 
 late() {
-	if (sim.cycle % 100 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount + " Mutaciones segregando: " + sim.mutations.size()) ;
+	if (sim.cycle % 100 == 0)
+		catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount +
+		     " Mutaciones segregando: " + sim.mutations.size());
 	if (p1.individualCount == 0) {
 		catn("Population went extinct! Ending the simulation.");
 		sim.simulationFinished();
 	}
 }
 
-600:1000 late() {
-	
-	if (sim.cycle % 50 == 0) catn("Tick: " + sim.cycle + " Pob: " + p1.individualCount + " Mutaciones segregando: " + sim.mutations.size());
-	
-	grid_bins = Dictionary();
-	inds = p1.individuals;
-	
-	// Calcular coordenada de celda (0-9)
-	xs = asInteger(floor((inds.x / MAP_WIDTH) * GRID_SIZE));
-	ys = asInteger(floor((inds.y / MAP_WIDTH) * GRID_SIZE));
-	
-	// Corrección de bordes (ahora es seguro)
-	xs = ifelse(xs >= GRID_SIZE, GRID_SIZE - 1, xs);
-	ys = ifelse(ys >= GRID_SIZE, GRID_SIZE - 1, ys);
-	
-	// ID único de celda
-	bin_ids = xs * GRID_SIZE + ys;
-	
-	// Llenar diccionario
-	for (i in 0:(size(inds)-1)) {
-		id = bin_ids[i];
-		// Eidos convierte 'id' a string automáticamente al usarlo como llave
-		existing_content = grid_bins.getValue(id);
-		
-		if (isNULL(existing_content))
-			grid_bins.setValue(id, inds[i]);
-		else
-			grid_bins.setValue(id, c(existing_content, inds[i]));
-	}
-	
-	available_bins = grid_bins.allKeys;
+// ------------------------------------------------------------------
+// Registro de frecuencias alélicas en celdas 10x10
+// (mismo formato y lógica de buffer que el script de espacio discreto)
+// ------------------------------------------------------------------
+1:1000 late() {
+	if (sim.cycle % 10 == 0) catn("Tick: " + sim.cycle);
 
-	lines_m1 = ""; // <--- !!! IMPORTANTE
-	lines_m2 = ""; // <--- !!! IMPORTANTE
-	
-	for (bin_id in available_bins) {
-		inds_in_bin = grid_bins.getValue(bin_id);
-		inds_in_bin = grid_bins.getValue(bin_id); // <--- !!! IMPORTANTE
-		
-		x_grid = asInteger(bin_id / GRID_SIZE) + 1;
-		y_grid = (bin_id % GRID_SIZE) + 1;         // Usamos bin_val, no bin_id
-		
-		all_genomes = inds_in_bin.haplosomes;
-		chr_tot = size(all_genomes);
-		all_muts = unique(all_genomes.mutations);
-		
-		for (m in all_muts) {
-			count = sum(all_genomes.mutations == m);
-			freq = count / asFloat(chr_tot);
-			
-			// m2 (Selección) - Guardamos todo
-			if (m.mutationType == m2) {
-				line = paste(c(sim.cycle, m.id, x_grid, y_grid, freq, count, chr_tot), sep=",");
-				lines_m2 = c(lines_m2, line);
+	muts_m1 = sim.mutationsOfType(m1);
+
+	if (size(muts_m1) > 0) {
+		inds = p1.individuals;
+
+		if (size(inds) > 0) {
+			// Asignar cada individuo a una celda (0..GRID_SIZE-1)
+			xs = asInteger(floor((inds.x / MAP_WIDTH) * GRID_SIZE));
+			ys = asInteger(floor((inds.y / MAP_WIDTH) * GRID_SIZE));
+			xs = ifelse(xs >= GRID_SIZE, GRID_SIZE - 1, xs);
+			ys = ifelse(ys >= GRID_SIZE, GRID_SIZE - 1, ys);
+			bin_ids = xs * GRID_SIZE + ys;
+
+			tick_lines = string(0);
+
+			for (x in 0:(GRID_SIZE - 1)) {
+				for (y in 0:(GRID_SIZE - 1)) {
+					bin_id = x * GRID_SIZE + y;
+					in_cell = inds[bin_ids == bin_id];
+					if (size(in_cell) == 0) next;
+
+					// Todos los haplosomas de la celda
+					all_genomes = in_cell.haplosomes;
+					chr_tot = size(all_genomes);
+
+					// Solo las mutaciones presentes en esta celda
+					cell_muts = unique(all_genomes.mutations);
+
+					for (m in cell_muts) {
+						if (m.mutationType != m1) next;
+						count = sum(all_genomes.containsMutations(m));
+						freq = count / asFloat(chr_tot);
+						line = paste(c(sim.cycle, m.id, x + 1, y + 1,
+						               freq, count, chr_tot), sep=",");
+						tick_lines = c(tick_lines, line);
+					}
+				}
 			}
-			// m1 (Neutro) - Filtro > 1% global (opcional, pero tu comentario decía filtro global)
-			// Aquí lo dejé tal cual lo tenías, guardando todo.
-			else if (m.mutationType == m1) {
-				line = paste(c(sim.cycle, m.id, x_grid, y_grid, freq, count, chr_tot), sep=",");
-				lines_m1 = c(lines_m1, line);
-			}
+
+			defineGlobal("WRITE_BUFFER", c(WRITE_BUFFER, tick_lines));
 		}
 	}
-	
-	// Ahora length sí será 0 si no hay datos, y >0 si hay datos correctos
-	if (length(lines_m1) > 0)
-		writeFile(OUTPUT_PATH + "C_FULL_neutros_m1_" + id_replica + ".csv", paste(lines_m1, sep="\n"), append=T);
-	
-	if (length(lines_m2) > 0)
-		writeFile(OUTPUT_PATH + "C_FULL_seleccion_m2_" + id_replica + ".csv", paste(lines_m2, sep="\n"), append=T);
-	
-	//if (size(available_bins) > 0) {
-	// Número de sitios arqueológicos descubiertos (1 a 10)
-	//	num_sites = rdunif(1, 1, 10);
-	//	sites_to_sample_count = min(num_sites, size(available_bins));
-	
-	//	if (sites_to_sample_count > 0) {
-	//		sampled_bin_ids = sample(available_bins, sites_to_sample_count);
-	//TODO: Adaptar el codigo de esta parte para que registre también
-	//el mismo filtro que hay de 0.0001 frq global que hay en
-	//el script discreto
-	//		lines_aDNA_m1 = "";
-	//        lines_aDNA_m2 = "";
-	
-	//		for (bin_id in sampled_bin_ids) {
-	//			inds_in_bin = grid_bins.getValue(bin_id);
-	
-	// Coordenadas discretas (1 a 10)
-	//			x_grid = asInteger(bin_id / GRID_SIZE) + 1;
-	//			y_grid = (bin_id % GRID_SIZE) + 1;
-	
-	// Número de individuos en el yacimiento (1 a 100)
-	//			num_inds_to_sample = rdunif(1, 1, 100);
-	//			num_inds_real = min(num_inds_to_sample, size(inds_in_bin));
-	
-	//			if (num_inds_real > 0) {
-	//				sampled_inds = sample(inds_in_bin, num_inds_real);
-	//				sampled_genomes = sampled_inds.haplosomes;
-	//				current_chr_tot = size(sampled_genomes);
-	//				muts_in_sample = unique(sampled_genomes.mutations);
-	
-	//				for (m in muts_in_sample) {
-	//					mut_type_str = "NA";
-	//					if (m.mutationType == m1) mut_type_str = "m1";
-	//					else if (m.mutationType == m2) mut_type_str = "m2";
-	
-	//					if (mut_type_str != "NA") {
-	//						count = sum(sampled_genomes.mutations == m);
-	//						freq = count / asFloat(current_chr_tot);
-	//						
-	//						line = paste(c(sim.cycle, m.id, mut_type_str, x_grid, y_grid, freq, count, current_chr_tot), sep=",");
-	//						if (m.mutationType == m1)
-	//                          lines_aDNA_m1 = c(lines_aDNA_m1, line);
-	//                       else if (m.mutationType == m2)
-	//                           lines_aDNA_m2 = c(lines_aDNA_m2, line);
-	//					}
-	//				}
-	//			}
-	//		}
-	//		if (length(lines_aDNA_m1) > 0)
-	//            writeFile(OUTPUT_PATH + "C_aDNA_scattered_neutros_m1_" + id_replica + ".csv", paste(lines_aDNA_m1, sep="\n"), append=T);
-	
-	//        if (length(lines_aDNA_m2) > 0)
-	//            writeFile(OUTPUT_PATH + "C_aDNA_scattered_seleccion_m2_" + id_replica + ".csv", paste(lines_aDNA_m2, sep="\n"), append=T);
-	//	}
-	//}
 
+	if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
+		if (length(WRITE_BUFFER) > 0) {
+			writeFile(OUT_FILE, paste(WRITE_BUFFER, sep="\n"), append=T);
+			defineGlobal("WRITE_BUFFER", string(0));
+		}
+	}
 }

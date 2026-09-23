@@ -4,6 +4,7 @@
 .RData
 .Ruserdata
 scripts/inference/infLikelihood_mutations_simulations_SLiM.R
+scripts/scripts_legado
 logs/
 Inference_SLiM.Rproj
 data/
