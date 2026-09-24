@@ -1,241 +1,205 @@
-library(dplyr)
-library(readr)
-library(stringr)
-library(tidyr)
-library(purrr)
-library(ggplot2)
+library(tidyverse)
+library(data.table)
 library(scales)
 
-# === 1. LECTURA Y PROCESAMIENTO DE ARCHIVOS SLIM ===
-directorio <- "data/results_Discrete/outputs_slim/independent_loci/seleccion"
-# Cambiamos el patrón para buscar los .csv de SLiM
-rutas_archivos <- list.files(path = directorio, pattern = "\\.csv$", full.names = TRUE)
+# ============================================================
+# 0. CARGAR TODOS LOS CHUNKS Y COMBINAR
+# ============================================================
+archivos_resumen <- Sys.glob("slim_lifespan_summary_chunk*.csv")
+if (length(archivos_resumen) == 0) archivos_resumen <- "slim_lifespan_summary.csv"
 
-# Función adaptada para extraer la duración (Lifespan) de los alelos
-procesar_archivo_slim <- function(ruta) {
-  nombre_archivo <- basename(ruta)
-  
-  # Usamos read.csv porque la imagen indica delimitación por comas
-  df <- read.csv(ruta, header = TRUE, sep = ",")
-  
-  # CORRECCIÓN 1: Extraer el TaskID (números justo antes de .csv)
-  tipo <- ifelse(str_detect(nombre_archivo, "neutros"), "Neutro", "Seleccion")
-  task_id <- str_extract(nombre_archivo, "\\d+(?=\\.csv$)")
-  
-  df_resumen <- df %>%
-    # CORRECCIÓN 2: Homogeneizar los tipos de datos antes de operar
-    mutate(
-      Generation = as.numeric(Generation),
-      MutationID = as.character(MutationID)
-    ) %>%
-    # Eliminar posibles NAs en Generation para evitar warnings en min()/max()
-    filter(!is.na(Generation)) %>%
-    group_by(MutationID) %>%
-    summarise(
-      # max - min + 1 nos da la duración total en generaciones
-      Lifespan = max(Generation, na.rm = TRUE) - min(Generation, na.rm = TRUE) + 1, 
-      .groups = "drop"
-    ) %>%
-    summarise(
-      Mean_Lifespan = mean(Lifespan, na.rm = TRUE),
-      Total_Mutations = n(), 
-      se = sd(Lifespan, na.rm = TRUE) / sqrt(n())
-    ) %>%
-    mutate(
-      Type = tipo,
-      TaskID = as.integer(task_id),
-      File = nombre_archivo
-    )
-  
-  return(df_resumen)
+df_raw <- rbindlist(lapply(archivos_resumen, fread), fill = TRUE) %>% as_tibble()
+cat("Filas cargadas:", nrow(df_raw), "\n")
+
+# ============================================================
+# 1. MAPEO TaskID -> (True_Mig, True_Sel)
+# ============================================================
+mig_values      <- c(0.0001, 0.0005, 0.001, 0.005, 0.01,
+                     0.025, 0.05, 0.075, 0.1, 0.125)
+sel_values_sel  <- c(0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.0050, 0.0025,
+                     0.001, 0.00075, 0.0005, 0.00025, 0.0001, 0.0)
+sel_values_neu  <- c(0.0)
+replicas_per_val <- 50
+
+mapear_params <- function(task_id, tipo) {
+  sel_values <- if (tipo == "Neutro") sel_values_neu else sel_values_sel
+  n_sel <- length(sel_values)
+  idx      <- floor((task_id - 1) / replicas_per_val)
+  idx_mig  <- floor(idx / n_sel) + 1
+  idx_sel  <- (idx %% n_sel) + 1
+  tibble(
+    True_Mig = mig_values[idx_mig],
+    True_Sel = sel_values[idx_sel],
+    Replica  = (task_id - 1) %% replicas_per_val + 1
+  )
 }
 
-# Iterar sobre todos los .csv y colapsarlos en un Master DF ligero
-df_raw <- map_dfr(rutas_archivos, procesar_archivo_slim)
+df_params <- df_raw %>%
+  rowwise() %>%
+  mutate(params = list(mapear_params(TaskID, Type))) %>%
+  unnest(params) %>%
+  ungroup()
 
+# --- Verificación rápida ---
+cat("\n=== Chequeo de mapeo ===\n")
+cat("TaskID=1    -> Mig=0.0001, Sel=0.1 (Seleccion)\n")
+cat("TaskID=51   -> Mig=0.0001, Sel=0.075\n")
+cat("TaskID=701  -> Mig=0.0005, Sel=0.1\n")
+cat("TaskID=1 (Neutro) -> Mig=0.0001, Sel=0.0\n\n")
 
-# === 2. ASIGNACIÓN DEL GRID DE PARÁMETROS (TRUE_MIG, TRUE_SEL) ===
-mig_values <- c(0.0, 0.01, 0.05, 0.1)
-sel_values <- c(0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001)
-replicas_per_val <- 10
+print(df_params %>% filter(Type == "Seleccion") %>%
+        slice(c(1, 51, 701)) %>%
+        select(TaskID, Type, True_Mig, True_Sel, Replica))
 
-df_lifespans <- df_raw %>%
+# ============================================================
+# 2. FILTRAR Y PREPARAR DATOS PARA PLOTS
+# ============================================================
+# Ratio Lifespan / (1/s) -- escala de referencia "tiempo de fijación esperado"
+df_plot <- df_params %>%
+  filter(!is.na(True_Sel), !is.na(True_Mig), !is.na(Mean_Lifespan)) %>%
   mutate(
-    # Replicamos la lógica: IDX = (TaskID - 1) / REPLICAS
-    idx = floor((TaskID - 1) / replicas_per_val),
-    
-    # R indexa desde 1, así que sumamos 1 a los índices de Bash
-    idx_mig = floor(idx / length(sel_values)) + 1,
-    idx_sel = (idx %% length(sel_values)) + 1,
-    
-    # Asignamos los valores reales a nuevas columnas
-    True_Mig = mig_values[idx_mig],
-    True_Sel = sel_values[idx_sel]
-  ) %>%
-  # Limpiamos las columnas temporales que ya no necesitamos
-  select(-idx, -idx_mig, -idx_sel)
+    Type     = factor(Type, levels = c("Seleccion", "Neutro")),
+    True_Mig = factor(True_Mig, levels = sort(unique(True_Mig))),
+    Sel_Label = ifelse(Type == "Neutro", "Neutro",
+                       sprintf("%.4g", True_Sel)),
+    # Escala relativa: lifespan en unidades de 1/s (tiempo de fijación teórico)
+    Lifespan_over_1s = ifelse(True_Sel > 0, Mean_Lifespan * True_Sel, NA_real_)
+  )
 
+# ============================================================
+# 3. RESUMEN: media y SE agregada por combinación
+# ============================================================
+resumen <- df_plot %>%
+  group_by(Type, True_Mig, True_Sel, Sel_Label) %>%
+  summarise(
+    n_replicas          = n(),
+    Mean_Lifespan_agg   = mean(Mean_Lifespan, na.rm = TRUE),
+    SD_Lifespan         = sd(Mean_Lifespan,   na.rm = TRUE),
+    SE_Lifespan         = SD_Lifespan / sqrt(n_replicas),
+    Mean_Lifespan_Fixed = mean(Mean_Lifespan_Fixed, na.rm = TRUE),
+    Mean_Lifespan_Lost  = mean(Mean_Lifespan_Lost,  na.rm = TRUE),
+    Mean_Pct_Fixed      = mean(Pct_Fixed, na.rm = TRUE),
+    Mean_Pct_Lost       = mean(Pct_Lost,  na.rm = TRUE),
+    .groups = "drop"
+  )
 
-# === 3. VISUALIZACIÓN ===
-# Para ver el efecto de la selección, filtramos los datos no neutrales
-df_plot_seleccion <- df_lifespans %>%
-  filter(!is.na(True_Mig))
-
-plot_lifespan <- ggplot(df_plot_seleccion, aes(x = True_Sel, y = Mean_Lifespan)) +
-  geom_boxplot(
-    aes(group = True_Sel),      # Agrupa las cajas por cada valor del coeficiente de selección
-    alpha = 0.3,              # Hace las cajas translúcidas para que sigas viendo los puntos
-    width = 0.2,              # Ajusta el ancho de las cajas
-    outlier.shape = NA        # Oculta los outliers por defecto para no duplicar los puntos translúcidos que ya tienes
+# ============================================================
+# 4. GRÁFICA 1: Lifespan promedio en función de s simulada
+#               (coloreado por D, facetado por Type)
+# ============================================================
+p1 <- ggplot(
+    resumen %>% filter(Type == "Seleccion"),
+    aes(x = True_Sel, y = Mean_Lifespan_agg,
+        color = True_Mig, group = True_Mig)
   ) +
-  # Puntos individuales de cada réplica de SLiM con algo de transparencia
-  geom_jitter(width = 0, height = 0, size = 1.5, alpha = 0.3) +
-  
-  # Líneas y puntos gruesos que marcan el promedio general de las 10 réplicas
-  stat_summary(fun = mean, geom = "line", linewidth = 1.2) +
-  stat_summary(fun = mean, geom = "point", size = 3) +
-  
-  # Facet_wrap por tasa de migración simulada
-  facet_wrap(~ True_Mig, labeller = labeller(True_Mig = label_both), ncol = 2) +
-  
-  # Escala logarítmica en el eje X para s
-  scale_x_log10(
-    breaks = sel_values,
-    labels = scales::scientific
+  geom_ribbon(aes(ymin = Mean_Lifespan_agg - SE_Lifespan,
+                  ymax = Mean_Lifespan_agg + SE_Lifespan,
+                  fill = True_Mig),
+              alpha = 0.15, color = NA) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2) +
+  scale_x_continuous(
+    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
+    breaks = sort(unique(df_plot$True_Sel)),
+    labels = scales::label_number(accuracy = 1e-5)
   ) +
-  
+  scale_y_log10() +
+  scale_color_viridis_d(option = "plasma", name = "True_Mig") +
+  scale_fill_viridis_d(option  = "plasma", name = "True_Mig") +
   labs(
-    title = "Average Allele Lifespan by Selection Coefficient",
-    subtitle = "Faded points are individual replicates; solid lines are means. Panels show True Migration Rate (D).",
-    x = "Simulated Selection Coefficient (True s) [log10 scale]",
-    y = "Mean Lifespan (Generations)"
+    title    = "Lifespan promedio de alelos por coeficiente de selección",
+    subtitle = "Media ± SE sobre 50 réplicas. Bandas = error estándar. Eje Y en escala log.",
+    x        = "Coeficiente de selección simulado (True_Sel)",
+    y        = "Lifespan promedio (generaciones)"
   ) +
-  theme_bw(base_size = 14) +
+  theme_bw(base_size = 13) +
   theme(
-    legend.position = "bottom",
     axis.text.x = element_text(angle = 45, hjust = 1),
     panel.grid.minor = element_blank(),
+    legend.position = "right"
+  )
+
+print(p1)
+ggsave("lifespan_vs_seleccion.png", p1, width = 12, height = 6, dpi = 300)
+
+# ============================================================
+# 5. GRÁFICA 2: Distribución del lifespan (boxplot) por s
+#               (facetado por D)
+# ============================================================
+p2 <- ggplot(
+    df_plot %>% filter(Type == "Seleccion"),
+    aes(x = factor(True_Sel), y = Mean_Lifespan,
+        fill = factor(True_Sel))
+  ) +
+  geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.4,
+               linewidth = 0.3, alpha = 0.85) +
+  facet_grid(~ True_Mig, labeller = labeller(True_Mig = label_both)) +
+  scale_y_log10() +
+  scale_fill_viridis_d(guide = "none") +
+  labs(
+    title    = "Distribución del lifespan por True_Sel y True_Mig",
+    subtitle = "Cada caja resume 50 réplicas. Eje Y en escala log.",
+    x        = "Coeficiente de selección simulado (True_Sel)",
+    y        = "Lifespan promedio por archivo (generaciones)"
+  ) +
+  theme_bw(base_size = 11) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    panel.grid.minor = element_blank(),
     strip.background = element_rect(fill = "gray90", color = "black"),
-    strip.text = element_text(face = "bold", size = 12)
+    strip.text = element_text(face = "bold", size = 9)
   )
 
-print(plot_lifespan)
-ggsave("Publication_Allele_Lifespan.png", plot = plot_lifespan, width = 12, height = 8, dpi = 300)
-
-
-library(tidyverse)
-library(data.table)   # fread + fwrite: más rápido y menor RAM que read.csv
+print(p2)
+ggsave("lifespan_boxplot_vs_seleccion.png", p2, width = 16, height = 5, dpi = 300)
 
 # ============================================================
-# 0. CONFIGURACIÓN
+# 6. (OPCIONAL) Añadir comparación con neutros
 # ============================================================
-directorio <- "data/results_Discrete/outputs_slim/independent_loci/seleccion"
-archivo_salida  <- "results/slim_lifespan_summary.csv"
+# Línea base: lifespan promedio de los neutros para cada D
+neutros_base <- resumen %>%
+  filter(Type == "Neutro") %>%
+  select(True_Mig, Lifespan_Neutro = Mean_Lifespan_agg)
 
-rutas_archivos <- list.files(directorio, pattern = "\\.csv$", full.names = TRUE)
-rutas_archivos <- rutas_archivos[!grepl("^P_TRON|^P_", basename(rutas_archivos))]
-
-cat("Archivos a procesar:", length(rutas_archivos), "\n")
-
-# ============================================================
-# 1. FUNCIÓN: leer UN archivo -> 1 fila de resumen
-# ============================================================
-# Columnas asumidas: Generation, MutationID, Frequency
-# Si tu SLiM output usa otros nombres, ajusta el `select =`.
-procesar_archivo_slim <- function(ruta) {
-  nombre <- basename(ruta)
-
-  # Lectura eficiente: solo las columnas necesarias
-  dt <- tryCatch(
-    fread(ruta, select = c("Generation", "MutationID", "Frequency"),
-          showProgress = FALSE, data.table = TRUE),
-    error = function(e) { message("Fallo lectura ", nombre, ": ", e$message); NULL }
-  )
-  if (is.null(dt) || nrow(dt) == 0) return(NULL)
-
-  # Homogeneizar tipos
-  dt[, Generation := as.numeric(Generation)]
-  dt[, MutationID := as.character(MutationID)]
-  dt <- dt[!is.na(Generation)]
-
-  if (nrow(dt) == 0) return(NULL)
-
-  gen_max <- max(dt$Generation)
-
-  # ---- Resumen por mutación ----
-  per_mut <- dt[, .(
-    first_gen = min(Generation),
-    last_gen  = max(Generation),
-    lifespan  = max(Generation) - min(Generation) + 1,
-    max_freq  = max(Frequency, na.rm = TRUE),
-    last_freq = Frequency[which.max(Generation)]
-  ), by = MutationID]
-
-  # ---- Clasificación fijado / perdido / segregando ----
-  per_mut[, status := fifelse(
-    last_freq >= 0.99,                        "Fixed",
-    fifelse(last_gen < gen_max | last_freq == 0, "Lost",
-                                                 "Segregating")
-  )]
-
-  # ---- Metadatos ----
-  tipo    <- ifelse(str_detect(nombre, "neutros"), "Neutro", "Seleccion")
-  task_id <- as.integer(str_extract(nombre, "\\d+(?=\\.csv$)"))
-
-  # ---- Resumen a nivel de archivo (UNA fila) ----
-  tibble(
-    File                = nombre,
-    TaskID              = task_id,
-    Type                = tipo,
-    Total_Mutations     = nrow(per_mut),
-    Mean_Lifespan       = mean(per_mut$lifespan,  na.rm = TRUE),
-    Median_Lifespan     = median(per_mut$lifespan, na.rm = TRUE),
-    SE_Lifespan         = sd(per_mut$lifespan, na.rm = TRUE) / sqrt(nrow(per_mut)),
-    N_Fixed             = sum(per_mut$status == "Fixed"),
-    N_Lost              = sum(per_mut$status == "Lost"),
-    N_Segregating       = sum(per_mut$status == "Segregating"),
-    Pct_Fixed           = 100 * mean(per_mut$status == "Fixed"),
-    Pct_Lost            = 100 * mean(per_mut$status == "Lost"),
-    Mean_Lifespan_Fixed = mean(per_mut$lifespan[per_mut$status == "Fixed"], na.rm = TRUE),
-    Mean_Lifespan_Lost  = mean(per_mut$lifespan[per_mut$status == "Lost"],  na.rm = TRUE)
-  )
-}
-
-# ============================================================
-# 2. LOOP INCREMENTAL (con reanudación)
-# ============================================================
-# Si el CSV ya existe, saltamos los archivos ya procesados
-if (file.exists(archivo_salida)) {
-  ya_procesados <- fread(archivo_salida, select = "File")$File
-  rutas_archivos <- rutas_archivos[!basename(rutas_archivos) %in% ya_procesados]
-  cat("Reanudando. Faltan:", length(rutas_archivos), "archivos.\n")
-}
-
-for (i in seq_along(rutas_archivos)) {
-  res <- tryCatch(
-    procesar_archivo_slim(rutas_archivos[i]),
-    error = function(e) {
-      message("Error en ", basename(rutas_archivos[i]), ": ", conditionMessage(e))
-      NULL
-    }
+p3 <- ggplot(
+    resumen %>% filter(Type == "Seleccion"),
+    aes(x = True_Sel, y = Mean_Lifespan_agg,
+        color = True_Mig, group = True_Mig)
+  ) +
+  geom_line(linewidth = 0.7) +
+  geom_point(size = 2) +
+  geom_hline(data = neutros_base,
+             aes(yintercept = Lifespan_Neutro, color = True_Mig),
+             linetype = "dashed", alpha = 0.5, linewidth = 0.4) +
+  scale_x_continuous(
+    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
+    breaks = sort(unique(df_plot$True_Sel)),
+    labels = scales::label_number(accuracy = 1e-5)
+  ) +
+  scale_y_log10() +
+  scale_color_viridis_d(option = "plasma", name = "True_Mig") +
+  labs(
+    title    = "Lifespan bajo selección vs línea base neutra",
+    subtitle = "Líneas punteadas = lifespan esperado bajo neutralidad (Type = Neutro) para cada D.",
+    x        = "Coeficiente de selección simulado (True_Sel)",
+    y        = "Lifespan promedio (generaciones)"
+  ) +
+  theme_bw(base_size = 13) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank()
   )
 
-  if (!is.null(res)) {
-    # Escribir INMEDIATAMENTE en disco (append)
-    existe <- file.exists(archivo_salida)
-    fwrite(res, archivo_salida, append = existe, col.names = !existe)
-  }
-
-  # Liberar memoria cada 50 archivos
-  if (i %% 50 == 0) {
-    gc(verbose = FALSE)
-    message(sprintf("Procesados %d / %d", i, length(rutas_archivos)))
-  }
-}
+print(p3)
+ggsave("lifespan_vs_neutros.png", p3, width = 12, height = 6, dpi = 300)
 
 # ============================================================
-# 3. CARGAR EL RESULTADO FINAL (ya ligero en RAM)
+# 7. Guardar tabla resumen
 # ============================================================
-df_raw <- fread(archivo_salida) %>% as_tibble()
-cat("Filas totales:", nrow(df_raw), "\n")
-print(head(df_raw))
+write_csv(resumen, "lifespan_resumen_por_parametros.csv")
+cat("\nResumen guardado en 'lifespan_resumen_por_parametros.csv'\n")
+
+# Chequeo rápido
+cat("\n=== Filas por combinación (debe ser 50) ===\n")
+print(resumen %>% count(Type, True_Mig, True_Sel) %>%
+        filter(n != 50) %>% head())

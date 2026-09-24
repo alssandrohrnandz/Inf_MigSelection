@@ -3,10 +3,10 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/IndLoci_%A_%a.out
 #SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=1-64        
+#SBATCH --array=1        
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
-#SBATCH --mem=8G
+#SBATCH --mem=2G
 #SBATCH --time=24:00:00
 
 # === 1. Configuración Inicial ===
@@ -25,18 +25,22 @@ MODEL=${3:-neutros}
 if [ "${MODEL}" == "neutros" ]; then
     SEL_VALUES=(0.0)
 else
-    SEL_VALUES=(0.1 0.075 0.05 0.025 0.01 0.0075 0.0050 0.0025 0.001 0.00075 0.0005 0.00025 0.0001 0.0)
+    SEL_VALUES=(0.1 0.05 0.01 0.005 0.001 0.005 0.0001 0.0)
 fi
 # === 2. Parameter Sweep Math ===
-#MIG_VALUES=(0.0 0.000005 0.00001 0.00005 0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
-MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125) #Solo para bajo seleccion, para reducir el tiempo de ejecucion. Se pueden agregar mas valores para mayor robustez
-# Equivale a calcular el % de migrantes por generacion en cada deme
-# 0.00001 = 0.01 migrantes de un deme de acuerdo a N*m
-# 0.001 = 1 migrante 
-# 0.1= 100 migrantes de un deme 
+MIG_VALUES=(0.0 0.0001 0.0005 0.001 0.005 0.01 0.05 0.1)
+
+# TODO Agregar valores de simulacion con MIG_VALUES=0.05 y SEL_VALUES=0.0005
+# TODO Agregar simulaciones con valores de selección negativa con solo SEL_VALUES=(-0.1 -0.01 -0.001 -0.0001)
+
+# 0.0001: Nm=0.1 control casi aislado
+# 0.0005: Nm=0.5 control aislado
+# 0.001: Nm=1 control aislado
+# 0.005: Nm=5 control moderado
+# 0.01: Nm=10 control moderado
+# 0.1: Nm=100 control alto
 
 
- ## TODO: Modificado para agregar variacion en la seleccion
 REPLICAS_PER_VAL=50 # Modificado a 10 para reducir el tiempo de ejecucion, pero se pueden aumentar para mayor robustez
 
 # Calcular índices
@@ -68,7 +72,7 @@ fi
 echo "--> Mode: $MODO | Action: $ACCION"
 
 # Definiendo argumentos de SLiM
-SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG -d Sel_V=$SEL_VALUES -d MODEL='$MODEL' "
+SLIM_ARGS="-d id_replica=$TASK_ID -d MIG=$CURRENT_MIG -d Sel_V=$CURRENT_SEL -d MODEL='$MODEL' "
 
 FILES_TO_PROCESS=()
 

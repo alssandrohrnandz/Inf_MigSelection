@@ -9,7 +9,7 @@ library(scales)
 # Definimos la paleta de colores global y los nuevos nombres
 mis_colores <- c("Classic" = "#004488", "B-B" = "#BB5566", "BwS" = "#DDAA33")
 # === 1. LECTURA Y ETIQUETADO DE ARCHIVOS ===
-directorio <- "data/results_Discrete/outputs_LL/loci"
+directorio <- "data/results_Discrete/outputs_LL/independent_loci/neutros"
 # * Este directorio contiene los archivos de salida de LL usando sitios independientes (loci) para los 3 modelos: Classic, B-B y BwS.
 # * Descomentar para usar otro directorio si es necesario
 # directorio <- "data/results_Discrete/outputs_LL/independent_loci/neutros"
@@ -94,11 +94,9 @@ df_mle <- df_composite %>%
 
 # * Estos valores de migracion y seleccion fueron definidos para sitios dependientes, para usar los valores
 # * de simulación de los sitios independientes, se deben ajustar según el diseño experimental
-# mig_values <- c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
-# sel_values <- c(0.00)
+mig_values <- c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
+sel_values <- c(0.00)
 
-mig_values <- c(0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
-sel_values <- c(0.01)#c(0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001)
 replicas_per_val <- 50
 
 df_mle <- df_mle %>%
@@ -430,7 +428,7 @@ library(scales) # Necesario para pseudo_log_trans
 # TODO: Esto se modifico para la NO INDEPENDENCIA de loci. Modificar en su defecto si se quiere usar para loci independientes.
 
 # GRÁFICA 1: RECUPERACIÓN NEUTROS (MEJORADA)
-plot_neutros_recovery <- ggplot(df_seleccion, aes(x = True_Mig, y = Inferred_D, color = Model)) +
+plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, color = Model)) +
   # Reducimos un poco el jitter para no distorsionar en la escala logarítmica
   geom_jitter(width = 0, height = 0.05, size = 2.5, alpha = 0.6) +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black", linewidth = 1) +
@@ -461,9 +459,9 @@ plot_neutros_recovery <- ggplot(df_seleccion, aes(x = True_Mig, y = Inferred_D, 
   )
 
 # * Cuando usemos "Indepence_Loci" data, debemos usar la siguiente carpeta
-# ggsave("figures/independent_loci/Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+ggsave("figures/independent_loci/Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
 
-ggsave("figures/loci/Recovery_3Models_Neutral_No_Independence_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+#ggsave("figures/loci/Recovery_3Models_Neutral_No_Independence_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
 
 
 ###  Violin Neutros
