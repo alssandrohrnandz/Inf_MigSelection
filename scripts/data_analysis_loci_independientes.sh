@@ -3,7 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/IndLoci_%A_%a.out
 #SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=1        
+#SBATCH --array=1602-3200       
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
@@ -104,28 +104,28 @@ fi
 if [[ "$MODO" == "discreto" || "$MODO" == "ambos" ]]; then
 
     # Crear carpetas necesarias
-    mkdir -p "${DIR_BASE}/data/results_Discrete/subsets"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/${MODEL}"
     mkdir -p "${DIR_BASE}/data/results_Discrete/outputs_LL/independent_loci/${MODEL}"
-    ##TODO: Mejorar para que se permita el análisis de archivo bajo seleccion y neutros
+
     FILES_TO_PROCESS+=(
         "D_FULL_${MODEL}_m1"
-        #"D_FULL_seleccion_m1"
-        #"D_FULL_neutros_m1" 
-        #"D_aDNA_scattered_neutros_m1"
-        #"D_aDNA_scattered_seleccion_m2"
     )
-    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/${MODEL}/D_FULL_${MODEL}_m1_${TASK_ID}.csv" ##TODO: Aqui cambie el D_FULL_seleccion_m1
-
+    FILE_CHECK="${DIR_BASE}/data/results_Discrete/outputs_slim/independent_loci/${MODEL}/D_FULL_${MODEL}_m1_${TASK_ID}.csv" 
     if [[ "$ACCION" == "solo_analisis" ]] || [[ -f "$FILE_CHECK" && -s "$FILE_CHECK" ]]; then
         
         echo "--> [SKIP] Saltando SLiM (Solicitado 'solo_analisis' o archivo ya existente)."
         
     else 
         
+        T_START_SLIM=$(date +%s)
+
         echo "--> [RUN] Ejecutando SLiM: Discrete Space..."
         slim $SLIM_ARGS "${DIR_BASE}/scripts/Discrete_Space_Inference/Discrete_Space_Sel.slim"
-        
+
+        T_END_SLIM=$(date +%s)
+        DUR_SLIM=$((T_END_SLIM - T_START_SLIM))
+        echo "Duracion ejecución: $DUR_SLIM segundos (~$(($DUR_SLIM / 60)) min)"
+
     fi
 fi
 
@@ -146,20 +146,25 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
     else
         BASE_PATH_TYPE="results_Discrete"
-        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations_binomial.R"
+        SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations.R"
     fi
     
     CURRENT_SLIM_DIR="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_slim/independent_loci/${MODEL}"
-    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/independent_loci_binomial_results"
+    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}"
 
     SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
     
     # Verificación y Extracción (AWK)
     if [ -f "${SLIM_OUTPUT}" ]; then
         
+        T_START_R=$(date +%s)
+
         #CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
         Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_MIG}" "${CURRENT_SEL}"
         
+        T_END_R=$(date +%S)
+        DUR_R_SCRIPT=$((T_END_R_SCRIPT - T_START_R_SCRIPT))
+        echo "Duracion ejecución: $DUR_R_SCRIPT segundos (~$(($DUR_R_SCRIPT / 60)) min)"
     else
         echo "    ALERTA: No se encontró la salida de SLiM: ${SLIM_OUTPUT}"
     fi

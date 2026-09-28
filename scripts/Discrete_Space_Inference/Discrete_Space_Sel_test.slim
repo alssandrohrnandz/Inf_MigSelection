@@ -1,0 +1,109 @@
+initialize() {
+    defineConstant("SubpopSize", 1000);
+    if (!exists("MIG")) 
+        defineConstant("MIG", 0.05);
+    defineConstant("Migration", MIG);
+    defineConstant("pop", 10);
+    defineConstant("matrix_size", pop * pop);
+    
+    if (!exists("id_replica"))
+        defineConstant("id_replica", 1);    
+    if (!exists("Sel_V"))
+        defineConstant("Sel_V", 0.01);
+    if (!exists("MODEL"))
+        defineConstant("MODEL", "neutros");
+        
+    // Ruta final
+    defineConstant("OUTPUT_PATH", "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/independent_loci/" + MODEL + "/");
+    
+    if (MODEL == "neutros") {
+        actual_sel = 0.0;
+    } else {
+        actual_sel = Sel_V;
+    }
+    
+    defineConstant("MU", 1.29e-8);
+    initializeMutationRate(MU);
+    initializeMutationType("m1", 0.5, "f", actual_sel);
+    initializeGenomicElementType("g1", m1, 1.0);
+    initializeGenomicElement(g1, 0, 999); 
+    initializeRecombinationRate(0.5);
+}
+
+1 early() {
+    defineGlobal("tiempo_inicial", clock());
+    metapopSide = pop;
+    metapopSize = pop * pop;
+    
+    for (i in 1:metapopSize)
+        sim.addSubpop(i, SubpopSize);
+    
+    subpops = sim.subpopulations;
+    for (x in 1:metapopSide)
+        for (y in 1:metapopSide) {
+            destID = (x - 1) + (y - 1) * metapopSide + 1;
+            ds = subpops[destID - 1];
+            if (x > 1) ds.setMigrationRates(destID - 1, Migration);
+            if (x < metapopSide) ds.setMigrationRates(destID + 1, Migration);
+            if (y > 1) ds.setMigrationRates(destID - metapopSide, Migration);
+            if (y < metapopSide) ds.setMigrationRates(destID + metapopSide, Migration);
+        }
+    
+    n = asInteger(sqrt(matrix_size));
+    defineGlobal("N_GRID", n);
+    idx = 0:(matrix_size - 1);
+    defineGlobal("X_POS", (idx % n) + 1);
+    defineGlobal("Y_POS", asInteger(idx / n) + 1);
+    
+    // --- OPTIMIZACIÓN DE I/O ---
+    // Escribimos al disco RAM/local del nodo para velocidad máxima
+    defineGlobal("TMP_FILE", "/tmp/D_FULL_" + MODEL + "_m1_" + id_replica + ".csv");
+    defineGlobal("OUT_FILE", OUTPUT_PATH + "D_FULL_" + MODEL + "_m1_" + id_replica + ".csv");
+    
+    header = "Cycle,MutID,X,Y,Freq,Count,Total";
+    writeFile(TMP_FILE, header, append=F);
+}
+
+1:1000 late() {
+    if (sim.cycle % 20 == 0) catn("Tick: " + sim.cycle);
+
+    muts_m1 = sim.mutationsOfType(m1);
+
+    if (size(muts_m1) > 0) {
+        mut_ids = muts_m1.id;
+        gen_lines = string(0); // Solo acumulamos los datos de ESTA generación
+
+        for (subpop in sim.subpopulations) {
+            counts = sim.mutationCounts(subpop, muts_m1);
+            present = counts > 0;
+            if (!any(present)) next;
+
+            chr_tot = 2 * subpop.individualCount;
+            index   = subpop.id - 1;
+            
+            valid_counts = counts[present];
+            valid_freqs  = valid_counts / chr_tot;
+            valid_ids    = mut_ids[present];
+
+            lines = sim.cycle + "," + valid_ids + "," + X_POS[index] + "," +
+                    Y_POS[index] + "," + valid_freqs + "," + valid_counts + "," + chr_tot;
+
+            // Anexar a la lista de esta generación es rápido porque es pequeña
+            gen_lines = c(gen_lines, lines);
+        }
+
+        // Volcar a disco local en cada iteración vacía la memoria inmediatamente
+        if (size(gen_lines) > 0) {
+            writeFile(TMP_FILE, gen_lines, append=T);
+        }
+    }
+}
+
+1000 late() {
+    // --- MOVIMIENTO FINAL ---
+    // Trasladamos el archivo consolidado a tu almacenamiento de red
+    system("mv " + TMP_FILE + " " + OUT_FILE);
+    
+    tiempo_final = clock();
+    catn("Simulación terminada. Tiempo: " + (tiempo_final - tiempo_inicial) + " s");
+}

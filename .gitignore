@@ -19,6 +19,7 @@ AADNA_data/
 results_validations/
 results_PDE/
 chr_frequencies/
+scripts/scripts_legado
 figures/
 **.csv
 **.pdf

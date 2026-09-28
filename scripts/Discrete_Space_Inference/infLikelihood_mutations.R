@@ -52,7 +52,7 @@ current_sel <- args[6]
 
 if(length(args) < 3) {
   print("Usando parámetros de prueba locales...")
-  freq_file   <- "data/results_Discrete/outputs_slim/independent_loci/D_FULL_seleccion_m1_1.csv"
+  freq_file   <- "data/results_Discrete/outputs_slim/independent_loci/seleccion/D_FULL_seleccion_m1_1.csv"
   # freq_file   <- "/mnt/data/dortega/hlopezh/Inf_MigSelection/data/results_Discrete/outputs_slim/independent_loci/D_FULL_neutros_m1_3.csv"
   task_id     <- "1"
   # task_id <- "3"
@@ -174,36 +174,77 @@ for (snp_actual in snps_to_analyze) {
   if(is.na(First_OcurrenceData)) next
   
   AlleleOriginAge <- df_snp$Generation[First_OcurrenceData]
-  max_gen_snp <- max(df_snp$Generation)
+
+  max_gen_snp    <- max(df_snp$Generation)
   max_gen_global <- max(tiempos_globales_muestreo)
+ 
+ # --- ZERO-PADDING ESPACIO-TEMPORAL COMPLETO ---
   
-  # --- ZERO-PADDING CONDICIONAL ---
-  # Solo aplicamos padding si el alelo desaparece ANTES del final de la simulación (500)
-  if (max_gen_snp < max_gen_global) {
-    print(paste("SNP", snp_actual, "desaparece antes del final de la simulación. Aplicando zero-padding hasta generación", max_gen_global))
-    gens_faltantes <- tiempos_globales_muestreo[tiempos_globales_muestreo > max_gen_snp]
-    if(length(gens_faltantes) > MAX_PADDED_GENERATIONS) {
-      gens_faltantes <- gens_faltantes[1:MAX_PADDED_GENERATIONS]
-    }
-    
-    coordenadas_historicas <- unique(df_snp[, c("X", "Y")])
-    chr_tot_promedio <- max(round(mean(df_snp$Chr_Tot, na.rm = TRUE)), 10)
-    
-    filas_ceros <- expand.grid(Generation = gens_faltantes, X = coordenadas_historicas$X, Y = coordenadas_historicas$Y)
-    filas_ceros$MutationID <- snp_actual
-    filas_ceros$Frequency <- 0
-    filas_ceros$Count <- 0
-    filas_ceros$Chr_Tot <- chr_tot_promedio
-    filas_ceros$TypeMut <- NA                   
-    filas_ceros$ChrOBS <- chr_tot_promedio      
-    
-    filas_ceros <- filas_ceros[, colnames(df_snp)]
-    df_snp <- rbind(df_snp, filas_ceros)
-    df_snp <- df_snp[order(df_snp$Generation, df_snp$Y, df_snp$X), ]
+  # --- Determinar el tope temporal del análisis ---
+
+# Última generación con alelo presente (sobre datos empíricos, sin padding aún)
+gens_con_alelo <- df_snp$Generation[df_snp$Frequency > 0]
+last_positive_gen <- max(gens_con_alelo)
+
+# ¿El alelo está fijado en la última observación?
+freq_final <- max(df_snp$Frequency[df_snp$Generation == last_positive_gen])
+esta_fijado <- freq_final >= (1 - 1e-6)   # freq == 1 en la práctica
+
+if (esta_fijado) {
+  # Alelo fijado → evaluar hasta el final de la simulación
+  gen_limite <- max_gen_global
+} else {
+  # Alelo perdido → evaluar hasta UNA generación después de la pérdida
+  idx_last <- which(tiempos_globales_muestreo == last_positive_gen)
+  if (length(idx_last) == 0) {
+    # última observación no está en el calendario global (caso raro): usar como tope
+    gen_limite <- last_positive_gen
+  } else if (idx_last < length(tiempos_globales_muestreo)) {
+    gen_limite <- tiempos_globales_muestreo[idx_last + 1]
+  } else {
+    # el alelo se pierde en el último punto muestreado → no hay +1
+    gen_limite <- last_positive_gen
   }
+}
+
+# Generaciones a evaluar: desde el origen hasta gen_limite, cubriendo huecos intermedios
+generaciones_totales <- tiempos_globales_muestreo[
+  tiempos_globales_muestreo >= AlleleOriginAge &
+  tiempos_globales_muestreo <= gen_limite
+]
+  
+  # 2. Crear el universo completo de coordenadas y tiempos posibles
+  # Asume que 'n' es la dimensión de tu grid (ej. 10 para una metapoblación 10x10)
+  grid_completo <- expand.grid(Generation = generaciones_totales, 
+                               X = 1:n, 
+                               Y = 1:n)
+  grid_completo$MutationID <- snp_actual
+  
+  # 3. Unir (Merge) el grid completo con tus datos empíricos de SLiM
+  df_snp_completo <- merge(grid_completo, df_snp, 
+                           by = c("Generation", "X", "Y", "MutationID"), 
+                           all.x = TRUE)
+  
+  # 4. Rellenar los verdaderos ceros (los que SLiM omitió por optimización)
+  df_snp_completo$Frequency[is.na(df_snp_completo$Frequency)] <- 0
+  df_snp_completo$Count[is.na(df_snp_completo$Count)] <- 0
+  
+  # 5. Rellenar la cantidad de cromosomas (Chr_Tot) para las zonas sin datos
+  chr_tot_promedio <- max(round(mean(df_snp$Chr_Tot, na.rm = TRUE)), 10)
+  df_snp_completo$Chr_Tot[is.na(df_snp_completo$Chr_Tot)] <- chr_tot_promedio
+  
+  # Opcional: limpiar NAs residuales de otras columnas si tu código las usa
+  df_snp_completo$TypeMut[is.na(df_snp_completo$TypeMut)] <- NA
+  df_snp_completo$ChrOBS[is.na(df_snp_completo$ChrOBS)] <- chr_tot_promedio
+  
+  # Sustituir y ordenar para que la PDE lo lea correctamente
+  df_snp <- df_snp_completo[order(df_snp_completo$Generation,
+                                 df_snp_completo$Y,
+                                 df_snp_completo$X), ]
   
   # --- CONFIGURACIÓN DE LA PDE ---
-  times_run <- AlleleOriginAge:max(df_snp$Generation)
+  # Se resuelve generación por generación para mantener estabilidad numérica en rk4
+  times_run <- seq(min(generaciones_totales), max(generaciones_totales), by = 1)
   
   # SEGURIDAD: ode.2D requiere al menos 2 puntos de tiempo distintos
   if(length(times_run) < 2) {

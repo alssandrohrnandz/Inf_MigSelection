@@ -61,34 +61,40 @@ initialize() {
 }
 
 1:1000 late() {
-	if (sim.cycle % 10 == 0) catn("Tick: " + sim.cycle);
-	
-	muts_m1 = sim.mutationsOfType(m1);
-	if (size(muts_m1) > 0) {
-		subpops = sim.subpopulations;
-		tick_lines = string(0);
-		
-		for (subpop in subpops) {
-			freqs = sim.mutationFrequencies(subpop, muts_m1); // 1 llamada por subpop, no por mutación
-			chr_tot = 2 * size(subpop.individuals);
-			index = subpop.id - 1;
-			x_pos = X_POS[index];
-			y_pos = Y_POS[index];
-			
-			allele_counts = asInteger(round(freqs * chr_tot));
-			
-			lines = sapply(seqAlong(muts_m1), "paste(c(sim.cycle, muts_m1[applyValue].id, x_pos, y_pos, freqs[applyValue], allele_counts[applyValue], chr_tot), sep=',');");
-			tick_lines = c(tick_lines, lines);
-		}
-		
-		defineGlobal("WRITE_BUFFER", c(WRITE_BUFFER, tick_lines));
-	}
-	
-	if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
-		if (length(WRITE_BUFFER) > 0) {
-			writeFile(OUT_FILE,
-				paste(WRITE_BUFFER, sep="\n"), append=T);
-			defineGlobal("WRITE_BUFFER", string(0));
-		}
-	}
+    if (sim.cycle % 20 == 0) catn("Tick: " + sim.cycle);
+
+    muts_m1 = sim.mutationsOfType(m1);
+
+    if (size(muts_m1) > 0) {
+        mut_ids = muts_m1.id;
+        new_lines = string(0);
+
+        for (subpop in sim.subpopulations) {
+            counts = sim.mutationCounts(subpop, muts_m1);   // una entrada por mutación
+            present = counts > 0;
+            if (!any(present)) next;
+
+            chr_tot = 2 * subpop.individualCount;
+            index   = subpop.id - 1;
+            valid_counts = counts[present];
+            valid_freqs  = valid_counts / chr_tot;
+            valid_ids    = mut_ids[present];
+
+            lines = sim.cycle + "," + valid_ids + "," + X_POS[index] + "," +
+                    Y_POS[index] + "," + valid_freqs + "," + valid_counts + "," + chr_tot;
+
+            new_lines = c(new_lines, lines);
+        }
+
+        if (size(new_lines) > 0)
+            defineGlobal("WRITE_BUFFER", c(WRITE_BUFFER, new_lines));
+    }
+
+    // El volcado queda fuera del "if" para que ocurra aunque no haya mutaciones ese ciclo
+    if (sim.cycle % FLUSH_EVERY == 0 | sim.cycle == 1000) {
+        if (size(WRITE_BUFFER) > 0) {
+            writeFile(OUT_FILE, WRITE_BUFFER, append=T);
+            defineGlobal("WRITE_BUFFER", string(0));
+        }
+    }
 }
