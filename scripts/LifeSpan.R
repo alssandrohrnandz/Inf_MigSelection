@@ -1,205 +1,169 @@
-library(tidyverse)
-library(data.table)
-library(scales)
+#!/usr/bin/env Rscript
+# ============================================================
+# master_lifespan_analysis.R
+# Pipeline completo para análisis de Lifespan de SLiM
+# 1. Lee resúmenes (summary) y genera gráfica de medias + Tukey HSD.
+# 2. Lee mutaciones individuales (per_mutation) y genera gráfica de proporciones.
+# Textos y etiquetas configurados en inglés para publicación científica.
+# ============================================================
+
+suppressPackageStartupMessages({
+  library(data.table)
+  library(ggplot2)
+  library(dplyr)
+  library(multcompView)
+  library(scales)
+})
 
 # ============================================================
-# 0. CARGAR TODOS LOS CHUNKS Y COMBINAR
+# 0. CONFIGURACIÓN GLOBAL
 # ============================================================
-archivos_resumen <- Sys.glob("slim_lifespan_summary_chunk*.csv")
-if (length(archivos_resumen) == 0) archivos_resumen <- "slim_lifespan_summary.csv"
+dir_datos    <- "."  # Directorio con los CSVs procesados
+dir_salida   <- "publication_figures"
+if (!dir.exists(dir_salida)) dir.create(dir_salida, recursive = TRUE)
 
-df_raw <- rbindlist(lapply(archivos_resumen, fread), fill = TRUE) %>% as_tibble()
-cat("Filas cargadas:", nrow(df_raw), "\n")
+SEL_VALUES <- c(0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001, 0.0)
+MIG_VALUES <- c(0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1)
+REPLICAS_PER_VAL <- 50
 
-# ============================================================
-# 1. MAPEO TaskID -> (True_Mig, True_Sel)
-# ============================================================
-mig_values      <- c(0.0001, 0.0005, 0.001, 0.005, 0.01,
-                     0.025, 0.05, 0.075, 0.1, 0.125)
-sel_values_sel  <- c(0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.0050, 0.0025,
-                     0.001, 0.00075, 0.0005, 0.00025, 0.0001, 0.0)
-sel_values_neu  <- c(0.0)
-replicas_per_val <- 50
-
-mapear_params <- function(task_id, tipo) {
-  sel_values <- if (tipo == "Neutro") sel_values_neu else sel_values_sel
-  n_sel <- length(sel_values)
-  idx      <- floor((task_id - 1) / replicas_per_val)
-  idx_mig  <- floor(idx / n_sel) + 1
-  idx_sel  <- (idx %% n_sel) + 1
-  tibble(
-    True_Mig = mig_values[idx_mig],
-    True_Sel = sel_values[idx_sel],
-    Replica  = (task_id - 1) %% replicas_per_val + 1
+# Tema base para publicación (blanco y negro, texto formal)
+pub_theme <- theme_bw(base_size = 12) +
+  theme(
+    plot.title       = element_text(face = "bold", size = 14, hjust = 0),
+    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0),
+    strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8),
+    strip.text       = element_text(face = "bold", size = 10),
+    axis.text.x      = element_text(angle = 45, hjust = 1, color = "black", size = 9),
+    axis.text.y      = element_text(color = "black"),
+    axis.title       = element_text(face = "bold"),
+    panel.grid.major = element_line(color = "grey90", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
+    panel.border     = element_rect(color = "black", fill = NA, linewidth = 0.8),
+    legend.position  = "bottom",
+    legend.title     = element_text(face = "bold")
   )
+
+cat(sprintf("[%s] INICIANDO PROCESAMIENTO...\n", Sys.time()))
+
+# ============================================================
+# PARTE 1: ANÁLISIS DE MEDIAS Y TUKEY HSD (SUMMARY DATA)
+# ============================================================
+cat("\n--- PARTE 1: Average Lifespan & Statistical Analysis ---\n")
+
+archivos_res <- list.files(dir_datos, pattern = "slim_lifespan_summary_chunk.*\\.csv$", full.names = TRUE)
+if (length(archivos_res) == 0 && file.exists("slim_lifespan_summary.csv")) archivos_res <- "slim_lifespan_summary.csv"
+
+df_sum <- rbindlist(lapply(archivos_res, fread), use.names = TRUE, fill = TRUE)
+
+# Reconstruir s y m
+df_sum[, idx     := (TaskID - 1) %/% REPLICAS_PER_VAL]
+df_sum[, idx_sel := idx %% length(SEL_VALUES)]
+df_sum[, idx_mig := idx %/% length(SEL_VALUES)]
+df_sum[, s_val := SEL_VALUES[idx_sel + 1]]
+df_sum[, m_val := MIG_VALUES[idx_mig + 1]]
+
+# Formatear factor s (s=0 como "0" para evitar NA)
+s_unicos <- sort(unique(df_sum$s_val))
+s_labels_clean <- ifelse(s_unicos == 0, "0", gsub("e-0", "e-", format(s_unicos, scientific = TRUE)))
+df_sum[, s_factor := factor(s_val, levels = s_unicos, labels = s_labels_clean)]
+df_sum[, Mig_Label := factor(paste0("True m: ", m_val), levels = paste0("True m: ", sort(MIG_VALUES)))]
+
+# --- Cálculo de Tukey HSD y CLD ---
+calcular_cld <- function(sub_dt) {
+  # Nombres temporales para evitar fallo por guiones en multcompLetters
+  s_niveles <- levels(sub_dt$s_factor)
+  s_map_temp <- setNames(paste0("s", seq_along(s_niveles)), s_niveles)
+  
+  sub_dt_temp <- copy(sub_dt)
+  sub_dt_temp[, s_temp := factor(s_map_temp[as.character(s_factor)], levels = unname(s_map_temp))]
+  
+  modelo <- aov(Mean_Lifespan ~ s_temp, data = sub_dt_temp)
+  tukey  <- TukeyHSD(modelo, "s_temp")
+  p_vals <- tukey$s_temp[, "p adj"]
+  
+  cld_temp <- multcompLetters(p_vals)$Letters
+  names(cld_temp) <- names(s_map_temp)[match(names(cld_temp), s_map_temp)]
+  
+  res_df <- sub_dt[, .(Max_Y = max(Mean_Lifespan, na.rm = TRUE) + (max(Mean_Lifespan, na.rm=TRUE)*0.08)), by = s_factor]
+  res_df[, Letter := cld_temp[as.character(s_factor)]]
+  return(res_df)
 }
 
-df_params <- df_raw %>%
-  rowwise() %>%
-  mutate(params = list(mapear_params(TaskID, Type))) %>%
-  unnest(params) %>%
-  ungroup()
+df_cld <- df_sum[, calcular_cld(.SD), by = Mig_Label]
+df_means <- df_sum[, .(Grand_Mean = mean(Mean_Lifespan, na.rm = TRUE)), by = .(s_factor, Mig_Label)]
 
-# --- Verificación rápida ---
-cat("\n=== Chequeo de mapeo ===\n")
-cat("TaskID=1    -> Mig=0.0001, Sel=0.1 (Seleccion)\n")
-cat("TaskID=51   -> Mig=0.0001, Sel=0.075\n")
-cat("TaskID=701  -> Mig=0.0005, Sel=0.1\n")
-cat("TaskID=1 (Neutro) -> Mig=0.0001, Sel=0.0\n\n")
-
-print(df_params %>% filter(Type == "Seleccion") %>%
-        slice(c(1, 51, 701)) %>%
-        select(TaskID, Type, True_Mig, True_Sel, Replica))
-
-# ============================================================
-# 2. FILTRAR Y PREPARAR DATOS PARA PLOTS
-# ============================================================
-# Ratio Lifespan / (1/s) -- escala de referencia "tiempo de fijación esperado"
-df_plot <- df_params %>%
-  filter(!is.na(True_Sel), !is.na(True_Mig), !is.na(Mean_Lifespan)) %>%
-  mutate(
-    Type     = factor(Type, levels = c("Seleccion", "Neutro")),
-    True_Mig = factor(True_Mig, levels = sort(unique(True_Mig))),
-    Sel_Label = ifelse(Type == "Neutro", "Neutro",
-                       sprintf("%.4g", True_Sel)),
-    # Escala relativa: lifespan en unidades de 1/s (tiempo de fijación teórico)
-    Lifespan_over_1s = ifelse(True_Sel > 0, Mean_Lifespan * True_Sel, NA_real_)
-  )
-
-# ============================================================
-# 3. RESUMEN: media y SE agregada por combinación
-# ============================================================
-resumen <- df_plot %>%
-  group_by(Type, True_Mig, True_Sel, Sel_Label) %>%
-  summarise(
-    n_replicas          = n(),
-    Mean_Lifespan_agg   = mean(Mean_Lifespan, na.rm = TRUE),
-    SD_Lifespan         = sd(Mean_Lifespan,   na.rm = TRUE),
-    SE_Lifespan         = SD_Lifespan / sqrt(n_replicas),
-    Mean_Lifespan_Fixed = mean(Mean_Lifespan_Fixed, na.rm = TRUE),
-    Mean_Lifespan_Lost  = mean(Mean_Lifespan_Lost,  na.rm = TRUE),
-    Mean_Pct_Fixed      = mean(Pct_Fixed, na.rm = TRUE),
-    Mean_Pct_Lost       = mean(Pct_Lost,  na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# ============================================================
-# 4. GRÁFICA 1: Lifespan promedio en función de s simulada
-#               (coloreado por D, facetado por Type)
-# ============================================================
-p1 <- ggplot(
-    resumen %>% filter(Type == "Seleccion"),
-    aes(x = True_Sel, y = Mean_Lifespan_agg,
-        color = True_Mig, group = True_Mig)
-  ) +
-  geom_ribbon(aes(ymin = Mean_Lifespan_agg - SE_Lifespan,
-                  ymax = Mean_Lifespan_agg + SE_Lifespan,
-                  fill = True_Mig),
-              alpha = 0.15, color = NA) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 2) +
-  scale_x_continuous(
-    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
-    breaks = sort(unique(df_plot$True_Sel)),
-    labels = scales::label_number(accuracy = 1e-5)
-  ) +
-  scale_y_log10() +
-  scale_color_viridis_d(option = "plasma", name = "True_Mig") +
-  scale_fill_viridis_d(option  = "plasma", name = "True_Mig") +
+# --- Gráfico de Publicación 1 ---
+p_stats <- ggplot(df_sum, aes(x = s_factor, y = Mean_Lifespan)) +
+  geom_jitter(width = 0.15, alpha = 0.25, size = 1.0, color = "black") +
+  geom_boxplot(outlier.shape = NA, fill = NA, color = "black", linewidth = 0.5, width = 0.4) +
+  geom_line(data = df_means, aes(x = s_factor, y = Grand_Mean, group = 1), color = "black", linewidth = 0.8) +
+  geom_point(data = df_means, aes(x = s_factor, y = Grand_Mean), color = "black", size = 2.0) +
+  geom_text(data = df_cld, aes(x = s_factor, y = Max_Y, label = Letter), 
+            size = 3.2, fontface = "bold", color = "#B22222") + # Rojo oscuro para contraste
+  facet_wrap(~ Mig_Label, ncol = 4) +
   labs(
-    title    = "Lifespan promedio de alelos por coeficiente de selección",
-    subtitle = "Media ± SE sobre 50 réplicas. Bandas = error estándar. Eje Y en escala log.",
-    x        = "Coeficiente de selección simulado (True_Sel)",
-    y        = "Lifespan promedio (generaciones)"
+    title    = "Average Allele Lifespan by Selection Coefficient",
+    subtitle = "Faded points represent individual simulation replicates. Solid lines connect global means.\nLetters above boxes indicate Tukey HSD groups (p < 0.05).",
+    x        = "Simulated Selection Coefficient (True s)",
+    y        = "Mean Lifespan (Generations)"
   ) +
-  theme_bw(base_size = 13) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank(),
-    legend.position = "right"
-  )
+  pub_theme
 
-print(p1)
-ggsave("lifespan_vs_seleccion.png", p1, width = 12, height = 6, dpi = 300)
+out_fig1 <- file.path(dir_salida, "Fig1_AverageLifespan_Tukey.png")
+ggsave(out_fig1, plot = p_stats, width = 12, height = 6.5, dpi = 300)
+cat(" -> Gráfico 1 guardado en:", out_fig1, "\n")
+
 
 # ============================================================
-# 5. GRÁFICA 2: Distribución del lifespan (boxplot) por s
-#               (facetado por D)
+# PARTE 2: PROPORCIÓN DE ESTATUS (PER_MUTATION DATA)
 # ============================================================
-p2 <- ggplot(
-    df_plot %>% filter(Type == "Seleccion"),
-    aes(x = factor(True_Sel), y = Mean_Lifespan,
-        fill = factor(True_Sel))
-  ) +
-  geom_boxplot(outlier.size = 0.5, outlier.alpha = 0.4,
-               linewidth = 0.3, alpha = 0.85) +
-  facet_grid(~ True_Mig, labeller = labeller(True_Mig = label_both)) +
-  scale_y_log10() +
-  scale_fill_viridis_d(guide = "none") +
-  labs(
-    title    = "Distribución del lifespan por True_Sel y True_Mig",
-    subtitle = "Cada caja resume 50 réplicas. Eje Y en escala log.",
-    x        = "Coeficiente de selección simulado (True_Sel)",
-    y        = "Lifespan promedio por archivo (generaciones)"
-  ) +
-  theme_bw(base_size = 11) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
-    panel.grid.minor = element_blank(),
-    strip.background = element_rect(fill = "gray90", color = "black"),
-    strip.text = element_text(face = "bold", size = 9)
-  )
+cat("\n--- PARTE 2: Mutation Status Proportions ---\n")
 
-print(p2)
-ggsave("lifespan_boxplot_vs_seleccion.png", p2, width = 16, height = 5, dpi = 300)
+archivos_pm <- list.files(dir_datos, pattern = "slim_lifespan_per_mutation_chunk.*\\.csv$", full.names = TRUE)
+if (length(archivos_pm) == 0 && file.exists("slim_lifespan_per_mutation.csv")) archivos_pm <- "slim_lifespan_per_mutation.csv"
 
-# ============================================================
-# 6. (OPCIONAL) Añadir comparación con neutros
-# ============================================================
-# Línea base: lifespan promedio de los neutros para cada D
-neutros_base <- resumen %>%
-  filter(Type == "Neutro") %>%
-  select(True_Mig, Lifespan_Neutro = Mean_Lifespan_agg)
+if (length(archivos_pm) > 0) {
+  df_pm <- rbindlist(lapply(archivos_pm, fread), use.names = TRUE, fill = TRUE)
+  
+  # Reconstruir s_val usando el mismo mecanismo numérico
+  df_pm[, idx     := (TaskID - 1) %/% REPLICAS_PER_VAL]
+  df_pm[, idx_sel := idx %% length(SEL_VALUES)]
+  df_pm[, s_val   := SEL_VALUES[idx_sel + 1]]
+  
+  # Usar los mismos labels limpios del sumario
+  df_pm[, s_factor := factor(s_val, levels = s_unicos, labels = s_labels_clean)]
+  df_pm[, Status := factor(Status, levels = c("Fixed", "Lost", "Segregating"))]
+  
+  # Calcular proporciones
+  df_prop <- df_pm[, .(N = .N), by = .(s_factor, Status)]
+  df_prop[, Total := sum(N), by = s_factor]
+  df_prop[, Proportion := N / Total]
+  
+  status_colors <- c("Fixed" = "#1b9e77", "Lost" = "#d95f02", "Segregating" = "#7570b3") # ColorBrewer Dark2
+  
+  # --- Gráfico de Publicación 2 ---
+  p_prop <- ggplot(df_prop, aes(x = s_factor, y = Proportion, fill = Status)) +
+    geom_bar(stat = "identity", position = "fill", width = 0.75, color = "black", linewidth = 0.3) +
+    geom_text(
+      aes(label = ifelse(Proportion > 0.04, sprintf("%.1f%%", Proportion * 100), "")),
+      position = position_fill(vjust = 0.5),
+      color = "white", fontface = "bold", size = 3
+    ) +
+    scale_y_continuous(labels = scales::percent_format()) +
+    scale_fill_manual(values = status_colors, name = "Mutation Status") +
+    labs(
+      title    = "Proportion of Mutation Outcomes by Selection Coefficient",
+      x        = "Simulated Selection Coefficient (True s)",
+      y        = "Relative Proportion"
+    ) +
+    pub_theme
+  
+  out_fig2 <- file.path(dir_salida, "Fig2_MutationStatus_Proportions.png")
+  ggsave(out_fig2, plot = p_prop, width = 8, height = 5, dpi = 300)
+  cat(" -> Gráfico 2 guardado en:", out_fig2, "\n")
+  
+} else {
+  cat(" -> ADVERTENCIA: No se encontraron archivos per_mutation. Saltando Gráfico 2.\n")
+}
 
-p3 <- ggplot(
-    resumen %>% filter(Type == "Seleccion"),
-    aes(x = True_Sel, y = Mean_Lifespan_agg,
-        color = True_Mig, group = True_Mig)
-  ) +
-  geom_line(linewidth = 0.7) +
-  geom_point(size = 2) +
-  geom_hline(data = neutros_base,
-             aes(yintercept = Lifespan_Neutro, color = True_Mig),
-             linetype = "dashed", alpha = 0.5, linewidth = 0.4) +
-  scale_x_continuous(
-    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
-    breaks = sort(unique(df_plot$True_Sel)),
-    labels = scales::label_number(accuracy = 1e-5)
-  ) +
-  scale_y_log10() +
-  scale_color_viridis_d(option = "plasma", name = "True_Mig") +
-  labs(
-    title    = "Lifespan bajo selección vs línea base neutra",
-    subtitle = "Líneas punteadas = lifespan esperado bajo neutralidad (Type = Neutro) para cada D.",
-    x        = "Coeficiente de selección simulado (True_Sel)",
-    y        = "Lifespan promedio (generaciones)"
-  ) +
-  theme_bw(base_size = 13) +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    panel.grid.minor = element_blank()
-  )
-
-print(p3)
-ggsave("lifespan_vs_neutros.png", p3, width = 12, height = 6, dpi = 300)
-
-# ============================================================
-# 7. Guardar tabla resumen
-# ============================================================
-write_csv(resumen, "lifespan_resumen_por_parametros.csv")
-cat("\nResumen guardado en 'lifespan_resumen_por_parametros.csv'\n")
-
-# Chequeo rápido
-cat("\n=== Filas por combinación (debe ser 50) ===\n")
-print(resumen %>% count(Type, True_Mig, True_Sel) %>%
-        filter(n != 50) %>% head())
+cat(sprintf("\n[%s] PROCESO FINALIZADO CON ÉXITO.\n", Sys.time()))

@@ -3,8 +3,7 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/IndLoci_%A_%a.out
 #SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=1602-3200       
-#SBATCH --ntasks=1
+#SBATCH --array=351-400
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=2G
 #SBATCH --time=24:00:00
@@ -25,14 +24,14 @@ MODEL=${3:-neutros}
 if [ "${MODEL}" == "neutros" ]; then
     SEL_VALUES=(0.0)
 else
-    SEL_VALUES=(0.1 0.05 0.01 0.005 0.001 0.005 0.0001 0.0)
+    SEL_VALUES=(0.1 0.05 0.01 0.005 0.001 0.0005 0.0001 0.0) 
 fi
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.0 0.0001 0.0005 0.001 0.005 0.01 0.05 0.1)
 
-# TODO Agregar valores de simulacion con MIG_VALUES=0.05 y SEL_VALUES=0.0005
-# TODO Agregar simulaciones con valores de selección negativa con solo SEL_VALUES=(-0.1 -0.01 -0.001 -0.0001)
-
+# Valores de migracion para alelos neutros
+#MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
+# Task ID va de 1 a 500, con 50 réplicas por combinación de parámetros. Total 500 archivos
 # 0.0001: Nm=0.1 control casi aislado
 # 0.0005: Nm=0.5 control aislado
 # 0.001: Nm=1 control aislado
@@ -41,7 +40,7 @@ MIG_VALUES=(0.0 0.0001 0.0005 0.001 0.005 0.01 0.05 0.1)
 # 0.1: Nm=100 control alto
 
 
-REPLICAS_PER_VAL=50 # Modificado a 10 para reducir el tiempo de ejecucion, pero se pueden aumentar para mayor robustez
+REPLICAS_PER_VAL=50 
 
 # Calcular índices
 IDX=$(( ($SLURM_ARRAY_TASK_ID - 1) / $REPLICAS_PER_VAL ))
@@ -139,8 +138,7 @@ fi
 echo "--> Iniciando extracción y análisis en R..."
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
-    # CORRECCIÓN 2: Determinar rutas dinámicamente según el prefijo del archivo
-    # Si empieza con "C_", es Continuo. Si es "D_", es Discreto.
+    # Determinar rutas dinámicamente según el prefijo del archivo
     if [[ "$PREFIJO" == "C_"* ]]; then
         BASE_PATH_TYPE="results_Continuous"
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
@@ -149,22 +147,39 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations.R"
     fi
     
-    CURRENT_SLIM_DIR="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_slim/independent_loci/${MODEL}"
-    LL_OUTPUT="${DIR_BASE}"/data/"${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}"
-
-    SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
+    CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim/independent_loci/${MODEL}"
     
-    # Verificación y Extracción (AWK)
+    # Corrección en la evaluación de variables flotantes/cadenas
+    if [[ "$CURRENT_MIG" == "0.0" && "$CURRENT_SEL" == "0.0" ]]; then
+        SLIM_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim/independent_loci/seleccion/D_FULL_seleccion_m1_${TASK_ID}.csv"
+        TASK_ID=$((TASK_ID + 150))
+    else
+        SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
+
+    fi
+
+    if [[ "$CURRENT_MIG" == "0.0" && "$CURRENT_SEL" == "0.0" ]]; then
+        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/neutros/Solo_Alelos_400"
+    else
+        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}/Solo_Alelos_400"
+    fi
+
+     # Imprimir el archivo objetivo para la prueba
+    echo "Archivo a analizar: ${SLIM_OUTPUT}"
+    echo "Nuevo Task ID (dentro de analisis seleccion): ${NEW_TASK_ID:-N/A}"
+    echo "Directorio de salida LL: ${LL_OUTPUT}"
+
+    # Omitir la ejecución del análisis de R durante la prueba
+    #continue
+
     if [ -f "${SLIM_OUTPUT}" ]; then
-        
         T_START_R=$(date +%s)
 
-        #CORRECCIÓN 4: Cerrada la comilla al final y variables correctas
         Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_MIG}" "${CURRENT_SEL}"
         
-        T_END_R=$(date +%S)
-        DUR_R_SCRIPT=$((T_END_R_SCRIPT - T_START_R_SCRIPT))
-        echo "Duracion ejecución: $DUR_R_SCRIPT segundos (~$(($DUR_R_SCRIPT / 60)) min)"
+        T_END_R=$(date +%s)
+        DUR_R_SCRIPT=$((T_END_R - T_START_R))
+        echo "Duracion ejecución: $DUR_R_SCRIPT segundos (~$((DUR_R_SCRIPT / 60)) min)"
     else
         echo "    ALERTA: No se encontró la salida de SLiM: ${SLIM_OUTPUT}"
     fi

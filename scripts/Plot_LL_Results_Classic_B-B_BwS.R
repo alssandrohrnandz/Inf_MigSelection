@@ -428,7 +428,7 @@ library(scales) # Necesario para pseudo_log_trans
 # TODO: Esto se modifico para la NO INDEPENDENCIA de loci. Modificar en su defecto si se quiere usar para loci independientes.
 
 # GRÁFICA 1: RECUPERACIÓN NEUTROS (MEJORADA)
-plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, color = Model)) +
+plot_neutros_recovery <- ggplot(df_seleccion, aes(x = True_Mig, y = Inferred_D, color = Model)) +
   # Reducimos un poco el jitter para no distorsionar en la escala logarítmica
   geom_jitter(width = 0, height = 0.05, size = 2.5, alpha = 0.6) +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black", linewidth = 1) +
@@ -459,7 +459,7 @@ plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, co
   )
 
 # * Cuando usemos "Indepence_Loci" data, debemos usar la siguiente carpeta
-ggsave("figures/independent_loci/Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
+ggsave("Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
 
 #ggsave("figures/loci/Recovery_3Models_Neutral_No_Independence_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300)
 
@@ -662,24 +662,40 @@ print(plot_profile_likelihood)
 
 library(tidyverse)
 
-directorio <- "data/results_Discrete/outputs_LL/independent_loci/seleccion"
+directorio <- "data/results_Discrete/outputs_LL/independent_loci/neutros"
 
 rutas_archivos <- list.files(
   path       = directorio,
-  pattern    = "_D_FULL_seleccion_m1\\.(txt|csv)$",
+  pattern    = "D_FULL_neutros_m1\\.(txt|csv)$",
   full.names = TRUE
 )
+
 rutas_archivos <- rutas_archivos[!grepl("^P_TRON|^P_", basename(rutas_archivos))]
 
 procesar_archivo <- function(ruta) {
   nombre_archivo <- basename(ruta)
-  df <- read_tsv(ruta, col_select = starts_with("D_"), show_col_types = FALSE)
+
+  # Leer SNP + columnas D_
+  df <- read_tsv(ruta, show_col_types = FALSE)
 
   cols_D <- names(df)[str_detect(names(df), "^D_")]
   if (length(cols_D) == 0) return(NULL)
 
-  # Suma por punto de gradilla (ignora NA dentro del archivo)
-  sumas <- colSums(as.matrix(df[, cols_D, drop = FALSE]), na.rm = TRUE)
+  # ---- NUEVO: descartar SNPs con algún NA en las columnas D_ ----
+  n_SNPs_original <- nrow(df)
+  df <- df %>%
+    filter(if_all(all_of(cols_D), ~ !is.na(.x)))
+
+  n_SNPs <- nrow(df)                # SNPs válidos usados en el MLE
+  n_descartados <- n_SNPs_original - n_SNPs
+
+  if (n_SNPs == 0) {
+    warning("Todos los SNPs de ", nombre_archivo, " tienen NA. Se omite.")
+    return(NULL)
+  }
+
+  # Suma por punto de gradilla (ya sin NA)
+  sumas <- colSums(as.matrix(df[, cols_D, drop = FALSE]))
 
   idx_mle        <- which.max(sumas)
   grid_param_mle <- cols_D[idx_mle]
@@ -697,14 +713,15 @@ procesar_archivo <- function(ruta) {
   task_id <- as.integer(str_extract(nombre_archivo, "(?<=TaskID_)\\d+"))
 
   tibble(
-    File           = nombre_archivo,
-    Model          = modelo,
-    TaskID         = task_id,
-    Inferred_D     = as.numeric(D_val),
-    Inferred_s     = as.numeric(s_val),
-    Grid_Param_MLE = grid_param_mle,
-    MLE_Sum        = mle_valor,
-    n_SNPs         = sum(!is.na(df[[cols_D[1]]]))
+    File            = nombre_archivo,
+    Model           = modelo,
+    TaskID          = task_id,
+    Inferred_D      = as.numeric(D_val),
+    Inferred_s      = as.numeric(s_val),
+    Grid_Param_MLE  = grid_param_mle,
+    MLE_Sum         = mle_valor,
+    n_SNPs          = n_SNPs,
+    n_SNPs_descartados = n_descartados   # opcional, para trazabilidad
   )
 }
 
@@ -731,12 +748,15 @@ tabla_final <- bind_rows(resultados)
 #       inner loop = SEL_VALUES  (rápido)
 # ============================================================
 # ORDEN EXACTO del bash (no reordenar):
-# mig_values <- c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
-# sel_values <- c(0.1, 0.075, 0.05, 0.025, 0.01, 0.0075, 0.0050, 0.0025, 0.001, 0.00075, 0.0005, 0.00025, 0.0001, 0.0)
-replicas_per_val <- 50
+# neutros
+mig_values <- c(0.0001, 0.0005, 0.001, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.125)
+sel_values <- c(0.0)
 
-mig_values <- c(0.0, 0.001, 0.1)
-sel_values <- c(0.0, 0.005, 0.01, 0.025, 0.05, 0.075, 0.1)
+# seleccion
+mig_values <- c(0.1, 0.05, 0.01, 0.005, 0.001, 0.005, 0.0001, 0.0)
+sel_values <- (0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1)
+
+replicas_per_val <- 50
 
 # Verificación rápida de consistencia con el bash
 stopifnot(length(mig_values) * length(sel_values) * replicas_per_val ==
@@ -773,13 +793,55 @@ tabla_final <- tabla_final %>%
 # ============================================================
 # 0. Preparación de tabla_final para el plot
 # ============================================================
+#Seleccion
+
 df_seleccion <- tabla_final %>%
   filter(!is.na(Inferred_s_scaled), !is.na(True_Sel)) %>%
   mutate(
     Model    = factor(Model, levels = c("Classic", "B-B", "BwS")),
     True_Mig = factor(True_Mig, levels = sort(unique(True_Mig)))
   )
-)
+
+# Neutros
+# Si se están analizando archivos neutros, dejar df_seleccion, solo eliminar las simulaciones con
+# 0.025, 0.075, 0.125
+df_neutros <- tabla_final %>%
+  filter(!is.na(Inferred_s_scaled), !is.na(True_Sel)) %>%
+  filter(!True_Sel %in% c(0.025, 0.075, 0.125)) %>%      # ya lo tenías
+  filter(!True_Mig %in% c(0.025, 0.075, 0.125)) %>%      # <-- NUEVO
+  mutate(
+    Model = factor(Model, levels = c("Classic", "B-B", "BwS"))
+  )
+
+mis_breaks <- c(0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1)
+
+plot_neutros_recovery <- ggplot(df_neutros, aes(x = True_Mig, y = Inferred_D, color = Model)) +
+  geom_jitter(width = 0, height = 0.05, size = 2.5, alpha = 0.6) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "black", linewidth = 1) +
+  facet_wrap(~ Model) +
+  scale_x_continuous(
+    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
+    breaks = mis_breaks
+  ) +
+  scale_y_continuous(
+    trans  = pseudo_log_trans(sigma = 1e-5, base = 10),
+    breaks = mis_breaks
+  ) +
+  scale_color_manual(values = mis_colores) +
+  labs(
+    title    = "Parameter Recovery: Diffusion (D) for Neutral Alleles (no independence)",
+    subtitle = "Dashed line = perfect inference. Axes in pseudo-log scale.",
+    x        = "Simulated Diffusion Rate (True D)",
+    y        = "Estimated Diffusion Rate (Inferred D)"
+  ) +
+  theme_bw(base_size = 14) +
+  theme(
+    legend.position   = "none",
+    panel.grid.minor  = element_blank(),
+    axis.text.x       = element_text(angle = 45, hjust = 1),
+    strip.background  = element_rect(fill = "gray90", color = "black"),
+    strip.text        = element_text(face = "bold")
+  )
 
 # Línea de referencia y = x (cubre el rango simulado real: 0 → 0.1)
 rango_max <- max(df_seleccion$True_Sel, na.rm = TRUE)
@@ -787,10 +849,12 @@ linea_perfecta <- data.frame(
   True_Sel          = c(0, rango_max),
   Inferred_s_scaled = c(0, rango_max)
 )
-
+ggsave("Recovery_3Models_Neutral_Independent_Loci.png", plot = plot_neutros_recovery, width = 14, height = 6, dpi = 300) 
 # ============================================================
 # 1. Plot: recuperación de s por modelo y por D (True_Mig)
 # ============================================================
+
+
 plot_seleccion_recovery <- ggplot(
     df_seleccion,
     aes(x = True_Sel, y = Inferred_s_scaled, color = Model)
@@ -839,7 +903,7 @@ plot_seleccion_recovery <- ggplot(
 # 2. Guardar
 # ============================================================
 ggsave(
-  "figures/independent_loci/Exploracion/Selection_IndLoci_Test_Sel.png",
+  "Neutros_IndLoci.png",
   plot   = plot_seleccion_recovery,
   width  = 16, height = 9, dpi = 300
 )
