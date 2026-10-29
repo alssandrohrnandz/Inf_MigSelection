@@ -3,6 +3,7 @@
 .Rhistory
 .RData
 .Ruserdata
+Inf_MigSelection.code-workspace
 scripts/inference/infLikelihood_mutations_simulations_SLiM.R
 scripts/scripts_legado
 logs/
