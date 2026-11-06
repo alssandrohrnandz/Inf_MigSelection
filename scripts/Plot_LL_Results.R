@@ -175,12 +175,15 @@ saveRDS(tabla_neutros,   file = "data/processed/tabla_neutros_all_filters.rds")
 saveRDS(tabla_seleccion, file = "data/processed/tabla_seleccion_all_filters.rds")
 message("Tablas guardadas exitosamente en formato .rds en data/processed/")
 
+tabla_neutros <- readRDS("data/processed/tabla_neutros_all_filters.rds")
+tabla_seleccion <- readRDS("data/processed/tabla_seleccion_all_filters.rds")
+
 
 # ============================================================
 # 3. BUCLE DE PLOTS POR TIPO DE FILTRO
 # ============================================================
 
-filtros_disponibles <- unique(c(tabla_neutros$Filtro)) #, tabla_seleccion$Filtro))
+filtros_disponibles <- unique(c(tabla_neutros$Filtro, tabla_seleccion$Filtro))
 filtros_disponibles <- filtros_disponibles[!is.na(filtros_disponibles) & filtros_disponibles != "unknown"]
 
 mis_breaks <- c(0.0, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1)
@@ -236,6 +239,52 @@ for (f in filtros_disponibles) {
     
     ggsave(sprintf("figures/Recovery_Neutral_IndLoci_Boxplot_%s.png", f), plot = plot_neutros_recovery_box, width = 14, height = 6, dpi = 300)
   }
+
+  df_error_D_summary <- df_neutros %>%
+      group_by(Model, True_Mig) %>%
+      summarise(
+        N_reps        = n(),
+        MAE_D         = mean(Abs_Error_D, na.rm = TRUE),
+        Min_Abs_Error = min(Abs_Error_D, na.rm = TRUE),
+        .groups       = "drop"
+      )
+    
+    plot_error_rate_D <- ggplot(df_error_D_summary, aes(x = True_Mig, y = MAE_D, color = Model, group = Model)) +
+      geom_line(linewidth = 1) + 
+      geom_point(size = 2.5) +
+      # Cinta sombreada para el límite del error mínimo
+      geom_ribbon(aes(ymin = Min_Abs_Error, ymax = MAE_D, fill = Model), alpha = 0.15, color = NA) +
+      scale_x_continuous(
+        trans = pseudo_log_trans(sigma = 1e-5, base = 10), 
+        breaks = mis_breaks
+      ) +
+      scale_y_continuous(
+        trans = pseudo_log_trans(sigma = 1e-5, base = 10),
+        labels = scales::scientific
+      ) +
+      scale_color_manual(values = mis_colores) +
+      scale_fill_manual(values = mis_colores) +
+      labs(
+        title = sprintf("Mean Absolute Error (MAE) for Diffusion (D) - Neutral [%s]", f),
+        subtitle = "Lines = Mean Absolute Error (MAE). Shaded area = Minimum Absolute Error.",
+        x = "Simulated Diffusion Rate (True D)",
+        y = "Absolute Error (D_inferred - D_true)"
+      ) +
+      theme_bw(base_size = 12) +
+      theme(
+        legend.position  = "bottom", 
+        axis.text.x      = element_text(angle = 45, hjust = 1), 
+        panel.grid.minor = element_blank()
+      )
+    
+    # Guardar la gráfica de error de D
+    ggsave(
+      sprintf("figures/Error_Rate_D_Neutral_%s.png", f), 
+      plot = plot_error_rate_D, 
+      width = 10, 
+      height = 6, 
+      dpi = 300
+    )
   
   # ----------------------------------------------------------
   # B. PLOTS: SELECCIÓN
@@ -316,7 +365,7 @@ for (f in filtros_disponibles) {
       theme(legend.position = "bottom", axis.text.x = element_text(angle = 45, hjust = 1, size = 8), panel.grid.minor = element_blank(), strip.background = element_rect(fill = "gray90", color = "black"), strip.text = element_text(face = "bold", size = 9))
     
     ggsave(sprintf("figures/Error_Rate_Selection_IndLoci_%s.png", f), plot = plot_error_rate_s, width = 14, height = 8, dpi = 300)
-    
+    ### ESTE ULTIMO HEATMAP NO VALE LA PENA ###
     plot_heatmap_min_error <- ggplot(df_error_summary, aes(x = factor(True_Sel), y = factor(True_Mig), fill = Min_Abs_Error)) +
       geom_tile(color = "white", linewidth = 0.5) +
       facet_wrap(~ Model) +
