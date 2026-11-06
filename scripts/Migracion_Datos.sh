@@ -13,6 +13,7 @@
 
 mkdir -p ../../backup/Alessandro/
 
+rm -f ../../backup/Alessandro/data_filtered.tar.gz
+
 tar --exclude='data/results_Discrete/outputs_LL/independent_loci/neutros' \
-    --exclude='data/results_Discrete/outputs_slim/independent_loci/D_FULL_seleccion_m1_*.csv' \
     -czvf ../../backup/Alessandro/data_filtered.tar.gz ./data

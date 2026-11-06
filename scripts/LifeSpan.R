@@ -30,11 +30,11 @@ REPLICAS_PER_VAL <- 50
 pub_theme <- theme_bw(base_size = 12) +
   theme(
     plot.title       = element_text(face = "bold", size = 14, hjust = 0),
-    plot.subtitle    = element_text(size = 10, color = "grey30", hjust = 0),
+    plot.subtitle    = element_text(size = 12, color = "grey30", hjust = 0),
     strip.background = element_rect(fill = "grey90", color = "black", linewidth = 0.8),
-    strip.text       = element_text(face = "bold", size = 10),
-    axis.text.x      = element_text(angle = 45, hjust = 1, color = "black", size = 9),
-    axis.text.y      = element_text(color = "black"),
+    strip.text       = element_text(face = "bold", size = 15),
+    axis.text.x      = element_text(angle = 45, hjust = 1, color = "black", size = 12),
+    axis.text.y      = element_text(color = "black", size=12),
     axis.title       = element_text(face = "bold"),
     panel.grid.major = element_line(color = "grey90", linewidth = 0.4),
     panel.grid.minor = element_blank(),
@@ -98,8 +98,8 @@ p_stats <- ggplot(df_sum, aes(x = s_factor, y = Mean_Lifespan)) +
   geom_boxplot(outlier.shape = NA, fill = NA, color = "black", linewidth = 0.5, width = 0.4) +
   geom_line(data = df_means, aes(x = s_factor, y = Grand_Mean, group = 1), color = "black", linewidth = 0.8) +
   geom_point(data = df_means, aes(x = s_factor, y = Grand_Mean), color = "black", size = 2.0) +
-  geom_text(data = df_cld, aes(x = s_factor, y = Max_Y, label = Letter), 
-            size = 3.2, fontface = "bold", color = "#B22222") + # Rojo oscuro para contraste
+  geom_text(data = df_cld, aes(x = s_factor, y = Max_Y + 2.0 , label = Letter), 
+            size = 5, fontface = "bold", color = "#B22222") + # Rojo oscuro para contraste
   facet_wrap(~ Mig_Label, ncol = 4) +
   labs(
     title    = "Average Allele Lifespan by Selection Coefficient",

@@ -3,9 +3,9 @@
 #SBATCH --partition=defq
 #SBATCH --output=logs/IndLoci_%A_%a.out
 #SBATCH --error=logs/IndLoci_%A_%a.err
-#SBATCH --array=351-400
-#SBATCH --cpus-per-task=1
-#SBATCH --mem=2G
+#SBATCH --array=1-3200
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
 #SBATCH --time=24:00:00
 
 # === 1. Configuración Inicial ===
@@ -28,10 +28,11 @@ else
 fi
 # === 2. Parameter Sweep Math ===
 MIG_VALUES=(0.0 0.0001 0.0005 0.001 0.005 0.01 0.05 0.1)
+#si son neutros ir de 351 a 400
 
 # Valores de migracion para alelos neutros
-#MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
-# Task ID va de 1 a 500, con 50 réplicas por combinación de parámetros. Total 500 archivos
+# MIG_VALUES=(0.0001 0.0005 0.001 0.005 0.01 0.025 0.05 0.075 0.1 0.125)
+# Task ID va de 351 a 400, con 50 réplicas por combinación de parámetros. Total 50 archivos
 # 0.0001: Nm=0.1 control casi aislado
 # 0.0005: Nm=0.5 control aislado
 # 0.001: Nm=1 control aislado
@@ -134,11 +135,29 @@ if [ ${#FILES_TO_PROCESS[@]} -eq 0 ]; then
     exit 1
 fi
 
-# === 4. Análisis en R (Dinámico) ===
-echo "--> Iniciando extracción y análisis en R..."
+# === 4. Análisis en R (paralelo por modo de filtro) ===
+echo "--> Iniciando extracción y análisis en R (paralelo)..."
+
+# Evita que cada proceso de R use varios hilos
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+
+MODOS_FILTRO=("all" "nuevos_400") # "vigentes_400") desaparecido
+
+# Función que lanza el análisis de un prefijo y un modo
+lanzar_R() {
+    local SCRIPT="$1" SLIM_OUT="$2" PREF="$3" LL_OUT="$4" MODO_F="$5" LOG="$6"
+    mkdir -p "$LL_OUT" "$(dirname "$LOG")"
+    Rscript --vanilla "$SCRIPT" "$SLIM_OUT" "$TASK_ID" "$PREF" "$LL_OUT" \
+        "$CURRENT_MIG" "$CURRENT_SEL" "$MODO_F" > "$LOG" 2>&1
+}
+
+PIDS=()
+LOGS=()
+T_START_R=$(date +%s)
 
 for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
-    # Determinar rutas dinámicamente según el prefijo del archivo
     if [[ "$PREFIJO" == "C_"* ]]; then
         BASE_PATH_TYPE="results_Continuous"
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Continuous_Space_Inference/infLikelihood_mutations.R"
@@ -146,47 +165,48 @@ for PREFIJO in "${FILES_TO_PROCESS[@]}"; do
         BASE_PATH_TYPE="results_Discrete"
         SCRIPT_R_PATH="${DIR_BASE}/scripts/Discrete_Space_Inference/infLikelihood_mutations.R"
     fi
-    
+
     CURRENT_SLIM_DIR="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim/independent_loci/${MODEL}"
-    
-    # Corrección en la evaluación de variables flotantes/cadenas
-    if [[ "$CURRENT_MIG" == "0.0" && "$CURRENT_SEL" == "0.0" ]]; then
-        SLIM_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_slim/independent_loci/seleccion/D_FULL_seleccion_m1_${TASK_ID}.csv"
-        TASK_ID=$((TASK_ID + 150))
-    else
-        SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
+    SLIM_OUTPUT="${CURRENT_SLIM_DIR}/${PREFIJO}_${TASK_ID}.csv"
 
-    fi
-
-    if [[ "$CURRENT_MIG" == "0.0" && "$CURRENT_SEL" == "0.0" ]]; then
-        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/neutros/Solo_Alelos_400"
-    else
-        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}/Solo_Alelos_400"
-    fi
-
-     # Imprimir el archivo objetivo para la prueba
     echo "Archivo a analizar: ${SLIM_OUTPUT}"
-    echo "Nuevo Task ID (dentro de analisis seleccion): ${NEW_TASK_ID:-N/A}"
-    echo "Directorio de salida LL: ${LL_OUTPUT}"
 
-    # Omitir la ejecución del análisis de R durante la prueba
-    #continue
-
-    if [ -f "${SLIM_OUTPUT}" ]; then
-        T_START_R=$(date +%s)
-
-        Rscript --vanilla "${SCRIPT_R_PATH}" "${SLIM_OUTPUT}" "${TASK_ID}" "${PREFIJO}" "${LL_OUTPUT}" "${CURRENT_MIG}" "${CURRENT_SEL}"
-        
-        T_END_R=$(date +%s)
-        DUR_R_SCRIPT=$((T_END_R - T_START_R))
-        echo "Duracion ejecución: $DUR_R_SCRIPT segundos (~$((DUR_R_SCRIPT / 60)) min)"
-    else
+    if [ ! -f "${SLIM_OUTPUT}" ]; then
         echo "    ALERTA: No se encontró la salida de SLiM: ${SLIM_OUTPUT}"
+        continue
+    fi
+
+    if [[ "$CURRENT_MIG" == "0.0" && "$CURRENT_SEL" == "0.0" ]]; then
+        LL_OUTPUT_NEUTROS="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/neutros"
+        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}"
+        # Caso neutro: cada modo se lanza para el archivo de neutros y para el normal
+        for MODO_F in "${MODOS_FILTRO[@]}"; do
+            LOG="${DIR_BASE}/logs/R_${PREFIJO}_neutros_${TASK_ID}_${MODO_F}.log"
+            lanzar_R "$SCRIPT_R_PATH" "$SLIM_OUTPUT" "D_FULL_neutros_m1" "$LL_OUTPUT_NEUTROS" "$MODO_F" "$LOG" &
+            PIDS+=($!); LOGS+=("$LOG")
+
+            LOG="${DIR_BASE}/logs/R_${PREFIJO}_${TASK_ID}_${MODO_F}.log"
+            lanzar_R "$SCRIPT_R_PATH" "$SLIM_OUTPUT" "$PREFIJO" "$LL_OUTPUT" "$MODO_F" "$LOG" &
+            PIDS+=($!); LOGS+=("$LOG")
+        done
+    else
+        LL_OUTPUT="${DIR_BASE}/data/${BASE_PATH_TYPE}/outputs_LL/independent_loci/${MODEL}"
+        for MODO_F in "${MODOS_FILTRO[@]}"; do
+            LOG="${DIR_BASE}/logs/R_${PREFIJO}_${TASK_ID}_${MODO_F}.log"
+            lanzar_R "$SCRIPT_R_PATH" "$SLIM_OUTPUT" "$PREFIJO" "$LL_OUTPUT" "$MODO_F" "$LOG" &
+            PIDS+=($!); LOGS+=("$LOG")
+        done
     fi
 done
 
-# === 5. Finalizar ===
-END_TIME=$(date +%s)
-DURATION=$((END_TIME - START_TIME))
-echo "Job ${TASK_ID} finalizado."
-echo "Duracion: $DURATION segundos (~$(($DURATION / 60)) min)"
+# Esperar a todos los procesos y contar fallos
+FALLOS=0
+for i in "${!PIDS[@]}"; do
+    if ! wait "${PIDS[$i]}"; then
+        FALLOS=$((FALLOS + 1))
+        echo "    FALLÓ: ${LOGS[$i]}"
+    fi
+done
+
+DUR_R_SCRIPT=$(( $(date +%s) - T_START_R ))
+echo "Análisis R terminado. Procesos: ${#PIDS[@]} | Fallos: $FALLOS | Duración: $DUR_R_SCRIPT s (~$((DUR_R_SCRIPT / 60)) min)"
